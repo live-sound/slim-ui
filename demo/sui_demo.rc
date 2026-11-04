@@ -1,0 +1,6 @@
+/* Resource bundle for sui_demo.
+ * Re-uses ../logo.png — the same file linked from slim-ui/README.md. */
+
+#define SUI_DEMO_LOGO_RCDATA 1001
+
+SUI_DEMO_LOGO_RCDATA RCDATA "../logo.png"

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SlimUi\SlimUi.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\native\build\Release\SlimUi.Native.dll"
+          Link="SlimUi.Native.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('..\..\native\build\Release\SlimUi.Native.dll')" />
+  </ItemGroup>
+</Project>

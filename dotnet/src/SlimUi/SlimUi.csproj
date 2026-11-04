@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\native\build\Release\SlimUi.Native.dll"
+          Link="SlimUi.Native.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          Condition="Exists('..\..\native\build\Release\SlimUi.Native.dll')" />
+  </ItemGroup>
+</Project>
