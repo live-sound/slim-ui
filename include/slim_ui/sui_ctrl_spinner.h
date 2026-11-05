@@ -376,14 +376,15 @@ static void sui_ctrl_draw_spinner(SuiControlHost* host, SuiControl* ctrl) {
         sui_renderer_pop_clip(r);
     }
 
-    /* Border — focus color when editing, eased brighter on hover otherwise
-     * (matches edit/textview/hotkey hover semantics). */
+    /* Border — focus color and a heavier stroke when editing, eased brighter on
+     * hover otherwise (matches edit/textview/hotkey). */
     border_color = ctrl->d.spinner.editing
         ? accent_color
         : sui_color_lerp(border_base,
             sui_ctrl_style_color(ctrl, SUI_STYLE_ACCENT_COLOR, sc->btn_default_border),
             ctrl->hover_t);
-    sui_renderer_draw_rounded_rect(r, ctrl->x, ctrl->y, ctrl->w, ctrl->h, rad, border_color, 1.0f);
+    sui_renderer_draw_rounded_rect(r, ctrl->x, ctrl->y, ctrl->w, ctrl->h, rad, border_color,
+                                   ctrl->d.spinner.editing ? 2.0f : 1.0f);
 
     /* Separator line between text area and arrow area */
     sui_renderer_draw_line(r, ax, ctrl->y + 3.0f*s, ax, ctrl->y + ctrl->h - 3.0f*s, border_base);
