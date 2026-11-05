@@ -471,7 +471,7 @@ static void BuildSectionTextInput(TestbedData* d, float cx, float cy, float cw, 
 
     /* Spinner — numeric edit */
     EmitLabel(h, &L, L"Spinner");
-    sui_ctrl_add_spinner_p(h, ID_SPINNER, L.x, L.y, L.w, L.ch,
+    sui_ctrl_add_spinner_p(h, ID_SPINNER, L.x, L.y, 120.0f * L.s, L.ch,
         SuiSpinnerParams{ .min=0.0f, .max=999.0f, .value=42.0f, .step=1.0f });
     sui_ctrl_set_tooltip(h, ID_SPINNER, L"Hold an arrow to keep changing the value.");
     AdvanceRow(&L, L.ch);

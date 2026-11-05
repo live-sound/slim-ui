@@ -249,7 +249,7 @@ internal sealed class SlimUiDemo
         AdvanceRow(ref layout, layout.ControlHeight);
 
         EmitLabel(ui, ref layout, "Spinner");
-        ui.SpinnerAt(IdSpinner, layout.X, layout.Y, layout.W, layout.ControlHeight, 0, 999, 42)
+        ui.SpinnerAt(IdSpinner, layout.X, layout.Y, 120, layout.ControlHeight, 0, 999, 42)
             .Tooltip("Hold an arrow to keep changing the value.");
         AdvanceRow(ref layout, layout.ControlHeight);
 
