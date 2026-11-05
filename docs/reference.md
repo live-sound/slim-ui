@@ -112,6 +112,14 @@ Decl containers, and Shader. `examples/tiny.c` is the smallest possible app.
   native `demo/main.cpp`: same sections, chrome, theme and typography
   pickers, logo flow, and resize behavior.
 
+Window dimensions passed to `SlimWindow` / `SlimApplication.Run` are outer-window
+sizes in DIPs. The bridge scales them for the initial display; client dimensions
+and the native handle are valid during the first build callback.
+
+The gallery uses a sample-specific native bridge with the same shader effects
+as the C++ demo. Its build copies `SlimUi.Sample.Native.dll` as `SlimUi.Native.dll`
+and includes `logo.png`; the regular wrapper DLL does not include demo effects.
+
 Build the wrapper and sample from `dotnet/`:
 
 ```powershell

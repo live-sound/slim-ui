@@ -20,6 +20,10 @@
 
 struct SuiNetWindow;
 
+#ifdef SUI_NET_SAMPLE_SHADER
+#include "../../samples/SlimUi.Sample/native/sample_shader.h"
+#endif
+
 typedef void (SUI_NET_CALL *SuiNetBuildCallback)(SuiNetWindow* window, void* user_data);
 typedef void (SUI_NET_CALL *SuiNetEventCallback)(SuiNetWindow* window, int control_id, int event_kind, void* user_data);
 
@@ -71,7 +75,14 @@ struct SuiNetWindow {
     std::unordered_map<int, SuiNetControlState> states;
     std::unordered_map<int, std::wstring> tooltips;
     std::vector<SuiImageHandle> images;
+#ifdef SUI_NET_SAMPLE_SHADER
+    SampleShaderState shader;
+#endif
 };
+
+#ifdef SUI_NET_SAMPLE_SHADER
+#include "../../samples/SlimUi.Sample/native/sample_shader.inl"
+#endif
 
 static const wchar_t* kSuiNetClassName = L"SlimUiNetWindow";
 static const UINT kSuiNetDeferredDestroyMessage = WM_APP + 0x5A0;
@@ -372,6 +383,9 @@ static void SuiNetRebuild(SuiNetWindow* window) {
 
 static void SuiNetRelease(SuiNetWindow* window) {
     if (!window || window->released) return;
+#ifdef SUI_NET_SAMPLE_SHADER
+    SampleShaderRelease(window);
+#endif
     SuiNetCaptureState(window);
     if (window->host_ready) {
         sui_ctrl_host_release(&window->host);
@@ -482,6 +496,9 @@ static LRESULT CALLBACK SuiNetWndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
         return 0;
 
     case WM_SIZE:
+#ifdef SUI_NET_SAMPLE_SHADER
+        if (window && window->host_ready) SampleShaderUpdateClock(window);
+#endif
         if (window && window->renderer_ready && wp != SIZE_MINIMIZED) {
             RECT cr;
             GetClientRect(hwnd, &cr);
@@ -595,6 +612,8 @@ SUI_NET_API SuiNetWindow* SUI_NET_CALL sui_net_window_create(
     window->event_callback = event_callback;
     window->user_data = user_data;
 
+    const int dpi = (int)GetDpiForSystem();
+
     HWND hwnd = CreateWindowExW(
         0,
         kSuiNetClassName,
@@ -602,8 +621,8 @@ SUI_NET_API SuiNetWindow* SUI_NET_CALL sui_net_window_create(
         WS_OVERLAPPEDWINDOW,
         CW_USEDEFAULT,
         CW_USEDEFAULT,
-        width > 0 ? width : 900,
-        height > 0 ? height : 640,
+        MulDiv(width > 0 ? width : 900, dpi, 96),
+        MulDiv(height > 0 ? height : 640, dpi, 96),
         NULL,
         NULL,
         GetModuleHandleW(NULL),

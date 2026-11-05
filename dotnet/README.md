@@ -11,7 +11,9 @@ The wrapper is intentionally thin:
   header-only Slim UI source.
 - `src/SlimUi/` contains the managed wrapper targeting `net8.0-windows`.
 - `samples/SlimUi.Sample/` contains the C# demo. It should replicate the
-  native `../demo/main.cpp` gallery.
+  native `../demo/main.cpp` gallery, including its Shader page. The sample's
+  native bridge reuses `demo/shader_effect.cpp`; the general wrapper does not
+  include these demo effects.
 
 ## Requirements
 
@@ -35,6 +37,7 @@ Run from this directory:
 This builds:
 
 - `native/build/Release/SlimUi.Native.dll`
+- `native/build/Release/SlimUi.Sample.Native.dll` (the gallery's bridge)
 - `src/SlimUi/bin/Release/net8.0-windows/SlimUi.dll`
 - `samples/SlimUi.Sample/bin/Release/net8.0-windows/SlimUi.Sample.exe`
 
@@ -57,6 +60,10 @@ samples\SlimUi.Sample\bin\Release\net8.0-windows\win-x64\publish\SlimUi.Sample.e
 ```
 
 That publish directory must also contain `SlimUi.Native.dll`.
+For the gallery, the build copies `SlimUi.Sample.Native.dll` under that name,
+alongside `logo.png`. Other applications use the regular `SlimUi.Native.dll`.
+
+Run the native bridge and managed startup regression checks with `./test.ps1`.
 
 ## Runtime model
 
@@ -72,6 +79,10 @@ bridge owns:
 - UIA forwarding through the Slim UI host.
 - shared frame-clock dispatch (one prepared native source per UI thread; idle animations unsubscribe).
 - state preservation across tree rebuilds.
+
+Window width and height are outer-window sizes in DIPs, scaled for the initial
+display just like the native demo. The first build callback already has a valid
+`NativeHandle`, `ClientWidth`, and `ClientHeight`.
 
 The C# build callback runs whenever the native side rebuilds the control
 tree, including window creation, resize, DPI changes, and explicit

@@ -26,6 +26,7 @@
 
 /* ---- IDs ----------------------------------------------------------------- */
 enum {
+    ID_SIDEBAR     = 80,
     ID_SHADER_IMAGE = 94,
     ID_SHADER_PAUSE = 95,
     ID_SHADER_SPEED = 96,
@@ -103,7 +104,7 @@ static const wchar_t* kDemoTextviewSeed =
     L"Try Shift+arrows to select, Ctrl+C/V/X for clipboard, Ctrl+Z to undo, "
     L"Ctrl+A to select all. Home/End/PageUp/PageDown navigate within the wrapped "
     L"layout. Right-click for the context menu.\n\n"
-    L"Toggle the readonly attribute via sui_ctrl_textview_set_readonly() at runtime.";
+    L"This is editable. Add a line of your own, then resize the window to see it wrap.";
 
 /* ---- App-defined custom typography (demo: serif Cambria, larger body) --- */
 static const SuiTypography demo_serif_typo = {
@@ -273,7 +274,8 @@ static SectionLayout MakeLayout(const TestbedData* d, float x, float y, float w)
 }
 
 static void EmitLabel(SuiControlHost* h, SectionLayout* L, const wchar_t* text) {
-    sui_ctrl_add_label(h, -1, L->x, L->y, L->w, L->lh, text);
+    int idx = sui_ctrl_add_label(h, -1, L->x, L->y, L->w, L->lh, text);
+    if (idx >= 0) h->controls[idx].state |= SUI_CTRL_BOLD;
     L->y += L->lh + L->lbl_gap;
 }
 
@@ -284,14 +286,18 @@ static void AdvanceRow(SectionLayout* L, float control_h) {
 /* Big bold section heading — uses SUI_TITLE_PT and SUI_CTRL_BOLD so the
  * renderer picks the title typography role (Cambria 700 in the serif demo,
  * Segoe UI Bold otherwise). */
-static void EmitSectionTitle(SuiControlHost* h, SectionLayout* L, const wchar_t* text) {
+static void EmitSectionTitle(SuiControlHost* h, SectionLayout* L, const wchar_t* text,
+                             const wchar_t* description) {
     const float title_h = 36.0f * L->s;
     int idx = sui_ctrl_add_label(h, -1, L->x, L->y, L->w, title_h, text);
     if (idx >= 0) {
         h->controls[idx].font_size = SUI_TITLE_PT;
         h->controls[idx].state    |= SUI_CTRL_BOLD;
     }
-    L->y += title_h + L->row_gap;
+    L->y += title_h + 4.0f * L->s;
+    sui_ctrl_add_label(h, -1, L->x, L->y, L->w, 22.0f * L->s, description);
+    sui_last_style_color(h, SUI_STYLE_TEXT_COLOR, h->scheme->text_secondary);
+    L->y += 22.0f * L->s + L->row_gap;
 }
 
 /* ---- Section: Basic controls (label, buttons, progress) ----------------- */
@@ -300,12 +306,12 @@ static void BuildSectionBasic(TestbedData* d, float cx, float cy, float cw, floa
     SectionLayout L = MakeLayout(d, cx, cy, cw);
     (void)ch_total; (void)cy;
 
-    EmitSectionTitle(h, &L, L"Basic controls");
+    EmitSectionTitle(h, &L, L"Basic controls", L"Small building blocks. Ready to make your own.");
 
     /* Plain label (single line) */
     EmitLabel(h, &L, L"Label");
     sui_ctrl_add_label(h, -1, L.x, L.y, L.w, L.ch,
-        L"Single-line label — picks up scheme.text color.");
+        L"Hello, Slim UI. Try a control, then change the theme.");
     AdvanceRow(&L, L.ch);
 
     /* Buttons — pin min_w to declared btn_w so the row scan reflects the
@@ -330,7 +336,7 @@ static void BuildSectionBasic(TestbedData* d, float cx, float cy, float cw, floa
     {
         const float tip_size = SUI_DEFAULT_TOOLTIP_SIZE * L.s;
         sui_ctrl_add_tooltip(h, ID_TOOLTIP_INFO, L.x, L.y + 5.0f * L.s, tip_size, tip_size,
-            L"A compact tooltip control for settings rows. Hover targets can be standalone or attached to any control.");
+            L"A little context, right where you need it. Tooltips work on their own or on any control.");
         sui_ctrl_add_label(h, -1, L.x + 28.0f * L.s, L.y, L.w - 28.0f * L.s, L.ch,
             L"Hover the ? icon or the button.");
     }
@@ -342,20 +348,20 @@ static void BuildSectionBasic(TestbedData* d, float cx, float cy, float cw, floa
         SuiControl* tb = sui_ctrl_find(h, ID_TOOLTIP_BUTTON);
         if (tb) { tb->min_w = tip_btn_w; }
         sui_ctrl_set_tooltip(h, ID_TOOLTIP_BUTTON,
-            L"This tooltip is attached directly to the button via SuiControl.tooltip.");
+            L"Buttons can explain themselves, too. Move away to dismiss this tooltip.");
     }
     AdvanceRow(&L, L.ch);
 
-    /* Progress bar — 22 DIP high, as in an installer wizard. */
+    /* Slim progress track, using the theme's default colors. */
     EmitLabel(h, &L, L"Progress bar");
     {
-        const float bar_h = 22.0f * L.s;
+        const float bar_h = 8.0f * L.s;
         sui_ctrl_add_progress(h, ID_PROGRESS, L.x, L.y, L.w, bar_h, 0.0f, 100.0f, 40.0f);
         AdvanceRow(&L, bar_h);
     }
 
     /* Slider — drives the progress bar above */
-    EmitLabel(h, &L, L"Slider");
+    EmitLabel(h, &L, L"Slider — drag to update the progress bar");
     sui_ctrl_add_slider_p(h, ID_SLIDER, L.x, L.y, L.w, L.ch,
         SuiSliderParams{ .min=0.0f, .max=100.0f, .value=40.0f, .step=1.0f });
     AdvanceRow(&L, L.ch);
@@ -376,7 +382,7 @@ static void BuildSectionChoices(TestbedData* d, float cx, float cy, float cw, fl
         L"Bengal",           L"Birman",             L"British Shorthair",
     };
 
-    EmitSectionTitle(h, &L, L"Choices");
+    EmitSectionTitle(h, &L, L"Choices", L"Pick one, select a few, or find your color.");
 
     /* Two columns: left = checkbox + radio, right = comboboxes + slider + spinner + swatch */
     const float col_gap   = 24.0f * L.s;
@@ -456,7 +462,7 @@ static void BuildSectionTextInput(TestbedData* d, float cx, float cy, float cw, 
     SectionLayout L = MakeLayout(d, cx, cy, cw);
     L.row_gap = 8.0f * L.s;
 
-    EmitSectionTitle(h, &L, L"Text input");
+    EmitSectionTitle(h, &L, L"Text input", L"Text, numbers, and shortcuts.");
 
     /* Edit */
     EmitLabel(h, &L, L"Edit");
@@ -497,7 +503,7 @@ static void BuildSectionTextInput(TestbedData* d, float cx, float cy, float cw, 
         if (tv_h < tv_min) tv_h = tv_min;
         sui_ctrl_add_textview(h, ID_TEXTVIEW, L.x, L.y, L.w, tv_h,
             kDemoTextviewSeed, DEMO_TEXTVIEW_CAP, /*readonly=*/0);
-        h->min_client_h = L.y + tv_min + L.lh + L.lbl_gap + L.ch + 24.0f * L.s;
+        h->min_client_h = L.y + tv_min + L.lh + L.lbl_gap + L.ch + 42.0f * L.s;
     }
 }
 
@@ -546,8 +552,7 @@ static void BuildSectionShader(TestbedData* d, float cx, float cy, float cw, flo
     SectionLayout L = MakeLayout(d, cx, cy, cw);
     (void)cy; (void)ch_total;
 
-    EmitSectionTitle(h, &L, L"Shader");
-    EmitLabel(h, &L, L"These controls draw as usual, then a pixel shader runs over their pixels.");
+    EmitSectionTitle(h, &L, L"Shader", L"Live effects. The same interactive controls underneath.");
     L.y += L.row_gap - L.lbl_gap;
 
     /* Whole pixels, so the bitmaps a control draws into line up with the screen. */
@@ -578,7 +583,7 @@ static void BuildSectionContainers(TestbedData* d, float cx, float cy, float cw,
     SectionLayout L = MakeLayout(d, cx, cy, cw);
     (void)cy;
 
-    EmitSectionTitle(h, &L, L"Containers");
+    EmitSectionTitle(h, &L, L"Containers", L"Explore groups, tabs, and layouts.");
 
     /* Scrollview spans the rest of the section. Three sub-containers
      * (vertical stack, horizontal stack, flow) are parented inside it. */
@@ -762,7 +767,7 @@ static void BuildSectionFlex(TestbedData* d, float cx, float cy, float cw, float
     SectionLayout L = MakeLayout(d, cx, cy, cw);
     (void)cy;
 
-    EmitSectionTitle(h, &L, L"Flex");
+    EmitSectionTitle(h, &L, L"Flex", L"Resize to see controls grow and shrink.");
 
     /* ── Horizontal demos: ROOT h=0 (vertical distribute won't fire). */
     SuiRect r1_px = {L.x, L.y, L.x + L.w, L.y};  /* bottom == top → h=0 */
@@ -855,17 +860,17 @@ static void BuildSectionFlex(TestbedData* d, float cx, float cy, float cw, float
                                  + SUI_DEFAULT_TEXTVIEW_H * L.s
                                  + 2.0f * vstack_gap;
         const float section_min_h =
-            36.0f * L.s                /* title */
+            62.0f * L.s                /* title and description */
             + L.row_gap
             + consumed_h1              /* H demos — height-stable */
             + L.row_gap
             + L.lh + L.lbl_gap         /* V demo caption */
             + vstack_min_h;
-        /* Bottom-bar reserve matches the imperative bar layout at L708:
-         * bar_h = ch + lh + lbl_gap, sat at bar_y = H - bar_h - 10*s,
+        /* Bottom-bar reserve matches the imperative bar layout:
+         * bar_h = ch + lh + lbl_gap, sat at bar_y = H - bar_h - 28*s,
          * with a 14*s gap above. */
         const float bar_h_local = L.ch + L.lh + L.lbl_gap;
-        const float bar_reserve = 14.0f * L.s + bar_h_local + 10.0f * L.s;
+        const float bar_reserve = 14.0f * L.s + bar_h_local + 28.0f * L.s;
         h->min_client_h = cy + section_min_h + bar_reserve;
     }
 }
@@ -887,7 +892,7 @@ static void BuildSectionDeclContainers(TestbedData* d, float cx, float cy,
     SectionLayout L = MakeLayout(d, cx, cy, cw);
     (void)cy;
 
-    EmitSectionTitle(h, &L, L"Declarative containers");
+    EmitSectionTitle(h, &L, L"Declarative containers", L"Nested layouts. Scrolling and clipping.");
 
     const float section_bottom = cy + ch_total;
     const float remaining_y    = L.y;
@@ -961,13 +966,13 @@ static void BuildSectionDeclContainers(TestbedData* d, float cx, float cy,
         const float clip_min_h = 100.0f * L.s;   /* clipbox: a few rows worth */
         const float inter_gap  = 8.0f * L.s;
         const float section_min_h =
-            36.0f * L.s                /* title */
+            62.0f * L.s                /* title and description */
             + L.row_gap
             + sv_min_h
             + inter_gap
             + clip_min_h;
         const float bar_h_local = L.ch + L.lh + L.lbl_gap;
-        const float bar_reserve = 14.0f * L.s + bar_h_local + 10.0f * L.s;
+        const float bar_reserve = 14.0f * L.s + bar_h_local + 28.0f * L.s;
         h->min_client_h = cy + section_min_h + bar_reserve;
     }
 
@@ -1025,22 +1030,33 @@ static void BuildControls(TestbedData* d) {
     const float H = (float)cr.bottom;
     const float s = (float)d->dpi / 96.0f;
 
-    const float pad     = 20.0f * s;
-    const float gap     = 16.0f * s;
-    const float nav_w   = 180.0f * s;
+    const float pad     = 28.0f * s;
+    const float gap     = 28.0f * s;
+    const float nav_w   = 208.0f * s;
     const float ch      = 28.0f * s;
     const float lh      = 18.0f * s;
     const float lbl_gap =  4.0f * s;
     const float bar_h   = ch + lh + lbl_gap;
-    const float bar_y   = H - bar_h - 10.0f * s;
+    const float bar_y   = H - bar_h - pad;
 
-    /* ---- Left chrome nav (section selector) — full window height ---- */
-    const float nav_x = 0.0f;
-    const float nav_y = 0.0f;
-    const float nav_h = H;
+    /* ---- Gallery identity and inset navigation ---- */
+    sui_ctrl_add_container(h, ID_SIDEBAR, 0.0f, 0.0f, nav_w, H);
+    sui_last_style_color(h, SUI_STYLE_BG_COLOR, d->scheme.nav_bg);
+    int brand = sui_ctrl_add_label(h, -1, 22.0f * s, 24.0f * s, nav_w - 44.0f * s, 32.0f * s, L"Slim UI");
+    if (brand >= 0) {
+        h->controls[brand].font_size = SUI_TITLE_PT;
+        h->controls[brand].state |= SUI_CTRL_BOLD;
+    }
+    sui_ctrl_add_label(h, -1, 22.0f * s, 60.0f * s, nav_w - 44.0f * s, lh, L"Control gallery");
+    sui_last_style_color(h, SUI_STYLE_TEXT_COLOR, d->scheme.text_secondary);
+    const float nav_x = 12.0f * s;
+    const float nav_y = 100.0f * s;
+    const float nav_h = H - nav_y;
     sui_ctrl_add_nav_list(h, ID_NAV_CHROME,
-        nav_x, nav_y, nav_w, nav_h,
+        nav_x, nav_y, nav_w - 24.0f * s, nav_h,
         /*item_height=*/44.0f * s, /*selected=*/d->section);
+    sui_last_style_color(h, SUI_STYLE_FILL_COLOR, d->scheme.btn_default_border);
+    sui_last_style_color(h, SUI_STYLE_BORDER_COLOR, d->scheme.nav_bg);
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Basic controls", L"\xE71D", 0xFF4CC2FF);
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Choices",        L"\xE73E", 0xFF4CC2FF);
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Text input",     L"\xE932", 0xFF4CC2FF);
@@ -1048,17 +1064,18 @@ static void BuildControls(TestbedData* d) {
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Flex",           L"\xE8A9", 0xFF4CC2FF);
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Decl containers",L"\xE8B7", 0xFF4CC2FF);
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Shader",         L"\xE790", 0xFF4CC2FF);
-    /* Nav is full-height: width pins the floor (so the chrome can't shrink
+    /* Nav fills the sidebar below the brand: width pins the floor
+     * (so the chrome can't shrink
      * narrower than the nav), height stays elastic so the window can shrink
      * past nav.h. NAV_LIST has no text-derived intrinsic, so we set min_w
      * explicitly rather than rely on the atom-default branch. */
     {
         SuiControl* nav = sui_ctrl_find(h, ID_NAV_CHROME);
-        if (nav) nav->min_w = nav->w;
+        if (nav) { nav->min_w = nav->w; nav->font_size = 11.0f; }
     }
 
     /* ---- Right content area ---- */
-    const float content_x = nav_x + nav_w + gap;
+    const float content_x = nav_w + gap;
     const float content_y = pad;
     const float content_w = W - content_x - pad;
     const float content_h = bar_y - 14.0f * s - content_y;
@@ -1104,29 +1121,28 @@ static void BuildControls(TestbedData* d) {
         if (sui__streq(typo_names[i], d->typo_name)) sel_typo = i;
     }
 
-    const float right_x  = W - right_total - 10.0f * s;
+    const float right_x  = W - right_total - pad;
     const float scheme_x = right_x;
     const float typo_x   = right_x + combo_w + gap_b;
 
-    sui_ctrl_add_label(h, ID_LBL_SCHEME, scheme_x, bar_y, combo_w, lh, L"Scheme");
+    sui_ctrl_add_label(h, ID_LBL_SCHEME, scheme_x, bar_y, combo_w, lh, L"Theme");
+    sui_last_style_color(h, SUI_STYLE_TEXT_COLOR, d->scheme.text_secondary);
     sui_ctrl_add_combobox(h, ID_COMBO_SCHEME,
         scheme_x, bar_y + lh + lbl_gap, combo_w, ch,
         scheme_w_ptrs, n_schemes, sel_scheme);
 
     sui_ctrl_add_label(h, ID_LBL_TYPO, typo_x, bar_y, combo_w, lh, L"Typography");
+    sui_last_style_color(h, SUI_STYLE_TEXT_COLOR, d->scheme.text_secondary);
     sui_ctrl_add_combobox(h, ID_COMBO_TYPO,
         typo_x, bar_y + lh + lbl_gap, combo_w, ch,
         typo_w_ptrs, n_typos, sel_typo);
 
-    /* Anchor the bottom bar: combos pinned to bottom-right with 10*s margins;
-     * labels sit one row higher (+ ch+lbl_gap on bottom_margin); the leading
-     * pair (Scheme) sits left of the trailing pair so its right_margin sums
-     * the trailing pair's column + gap_b + 10*s. */
+    /* Keep the pickers aligned with the content edge and reserve a row gap. */
     const uint32_t anchor = SUI_CTRL_ANCHOR_RIGHT | SUI_CTRL_ANCHOR_BOTTOM;
-    const float    rm_lead  = combo_w + gap_b + 10.0f * s + gap;       /* + nav clearance */
-    const float    rm_trail = 10.0f * s;
-    const float    bm_lbl   = lbl_gap + ch + 10.0f * s + 14.0f * s;    /* + row gap above bar */
-    const float    bm_combo = 10.0f * s + 14.0f * s;                   /* + row gap above bar */
+    const float    rm_lead  = combo_w + gap_b + pad + gap;
+    const float    rm_trail = pad;
+    const float    bm_lbl   = lbl_gap + ch + pad + 14.0f * s;
+    const float    bm_combo = pad + 14.0f * s;
     sui_ctrl_set_anchor(h, ID_LBL_SCHEME,   anchor, rm_lead,  bm_lbl);
     sui_ctrl_set_anchor(h, ID_COMBO_SCHEME, anchor, rm_lead,  bm_combo);
     sui_ctrl_set_anchor(h, ID_LBL_TYPO,     anchor, rm_trail, bm_lbl);

@@ -10,6 +10,6 @@
     <None Include="..\..\native\build\Release\SlimUi.Native.dll"
           Link="SlimUi.Native.dll"
           CopyToOutputDirectory="PreserveNewest"
-          Condition="Exists('..\..\native\build\Release\SlimUi.Native.dll')" />
+          Condition="'$(SlimUiCopyNativeLibrary)' != 'false' And Exists('..\..\native\build\Release\SlimUi.Native.dll')" />
   </ItemGroup>
 </Project>

@@ -130,8 +130,9 @@ same change when the wrapper exposes or depends on that behavior.
 
 When adding or changing a demo-covered control in `demo/main.cpp`, update
 `dotnet/samples/SlimUi.Sample/Program.cs` so the .NET demo continues to
-replicate the native SUI demo. The Shader page is the exception: it uses
-Direct2D directly, which the wrapper doesn't expose. If the native control has persistent
+replicate the native SUI demo. The Shader page reuses the native demo's effects
+through the sample-specific bridge; keep that support out of the general wrapper.
+If the native control has persistent
 runtime state across rebuilds, update the .NET bridge state preservation
 logic too.
 

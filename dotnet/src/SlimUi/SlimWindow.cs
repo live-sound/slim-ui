@@ -240,6 +240,9 @@ public sealed class SlimWindow : IDisposable
     {
         if (_disposed) return;
 
+        // Creation can invoke the first build before the P/Invoke call returns.
+        _native = window;
+
         _nextAutoId = 1000;
         _clickHandlers.Clear();
         _changeHandlers.Clear();

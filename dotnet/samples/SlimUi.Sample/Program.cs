@@ -5,6 +5,10 @@ return SlimApplication.Run("Slim UI Demo", 960, 720, demo.Build);
 
 internal sealed class SlimUiDemo
 {
+    private const int IdSidebar = 80;
+    private const int IdShaderImage = 94;
+    private const int IdShaderPause = 95;
+    private const int IdShaderSpeed = 96;
     private const int IdBtnClick = 101;
     private const int IdBtnDefault = 102;
     private const int IdBtnDisabled = 103;
@@ -45,14 +49,15 @@ internal sealed class SlimUiDemo
     private const int SectionContainers = 3;
     private const int SectionFlex = 4;
     private const int SectionDeclContainers = 5;
-    private const int SectionCount = 6;
+    private const int SectionShader = 6;
+    private const int SectionCount = 7;
 
     private const string TextViewSeed =
         "Multi-line text view with soft-wrap.\n\n" +
         "Try Shift+arrows to select, Ctrl+C/V/X for clipboard, Ctrl+Z to undo, " +
         "Ctrl+A to select all. Home/End/PageUp/PageDown navigate within the wrapped " +
         "layout. Right-click for the context menu.\n\n" +
-        "Toggle the readonly attribute via sui_ctrl_textview_set_readonly() at runtime.";
+        "This is editable. Add a line of your own, then resize the window to see it wrap.";
 
     private static readonly SlimNavItem[] NavItems =
     [
@@ -62,6 +67,7 @@ internal sealed class SlimUiDemo
         new("Containers", "\uE7C4", 0xFF4CC2FF),
         new("Flex", "\uE8A9", 0xFF4CC2FF),
         new("Decl containers", "\uE8B7", 0xFF4CC2FF),
+        new("Shader", "\uE790", 0xFF4CC2FF),
     ];
 
     private static readonly string[] SchemeNames = ["blue-dark", "light", "dark"];
@@ -72,6 +78,17 @@ internal sealed class SlimUiDemo
     private string _schemeName = "light";
     private string _typographyName = "default";
     private SlimImage _logo;
+    private bool _shaderPaused;
+    private float _shaderSpeed = 1;
+
+    private uint Accent => _schemeName switch
+    {
+        "light" => 0xFF0078D4,
+        "dark" => 0xFFCC6E1F,
+        _ => 0xFF4CC2FF,
+    };
+    private uint SidebarColor => _schemeName == "light" ? 0xFFF3F3F3 : 0xFF2A2A2A;
+    private uint SecondaryText => _schemeName == "light" ? 0xFF444444 : 0xFF999999;
 
     public void Build(SlimUiBuilder ui)
     {
@@ -81,24 +98,30 @@ internal sealed class SlimUiDemo
 
         float w = ui.ClientWidth;
         float h = ui.ClientHeight;
-        float pad = 20;
-        float gap = 16;
-        float navW = 180;
+        float pad = 28;
+        float gap = 28;
+        float navW = 208;
         float ch = 28;
         float lh = 18;
         float labelGap = 4;
         float barH = ch + lh + labelGap;
-        float barY = h - barH - 10;
+        float barY = h - barH - pad;
+
+        ui.ContainerAt(IdSidebar, 0, 0, navW, h).StyleColor(SlimStyleColor.Background, SidebarColor);
+        ui.TitleAt(22, 24, navW - 44, 32, "Slim UI");
+        ui.LabelAt(22, 60, navW - 44, lh, "Control gallery");
+        ui.LastStyleColor(SlimStyleColor.Text, SecondaryText);
 
         SlimControl nav = default;
-        nav = ui.NavListAt(IdNavChrome, 0, 0, navW, h, 44, NavItems, _section, onChanged: () =>
+        nav = ui.NavListAt(IdNavChrome, 12, 100, navW - 24, h - 100, 44, NavItems, _section, onChanged: () =>
         {
             int selected = nav.SelectedIndex;
             if (selected < 0 || selected >= SectionCount || selected == _section) return;
             _section = selected;
             ui.Window.RequestRebuild();
         });
-        ui.SetMinSize(IdNavChrome, width: navW);
+        nav.FontSize(11).StyleColor(SlimStyleColor.Fill, Accent).StyleColor(SlimStyleColor.Border, SidebarColor);
+        ui.SetMinSize(IdNavChrome, width: navW - 24);
 
         float contentX = navW + gap;
         float contentY = pad;
@@ -126,19 +149,23 @@ internal sealed class SlimUiDemo
             case SectionDeclContainers:
                 BuildSectionDeclContainers(ui, contentX, contentY, contentW, contentH);
                 break;
+            case SectionShader:
+                BuildSectionShader(ui, contentX, contentY, contentW);
+                break;
         }
 
         BuildBottomBar(ui, w, barY, ch, lh, labelGap, gap);
+        SampleShader.Configure(ui.Window, IdShaderImage, IdEdit, _section == SectionShader, _shaderPaused, _shaderSpeed);
     }
 
     private void BuildSectionBasic(SlimUiBuilder ui, float cx, float cy, float cw, float chTotal)
     {
         SectionLayout layout = MakeLayout(cx, cy, cw);
 
-        EmitSectionTitle(ui, ref layout, "Basic controls");
+        EmitSectionTitle(ui, ref layout, "Basic controls", "Small building blocks. Ready to make your own.");
 
         EmitLabel(ui, ref layout, "Label");
-        ui.LabelAt(layout.X, layout.Y, layout.W, layout.ControlHeight, "Single-line label — picks up scheme.text color.");
+        ui.LabelAt(layout.X, layout.Y, layout.W, layout.ControlHeight, "Hello, Slim UI. Try a control, then change the theme.");
         AdvanceRow(ref layout, layout.ControlHeight);
 
         EmitLabel(ui, ref layout, "Buttons");
@@ -154,27 +181,61 @@ internal sealed class SlimUiDemo
 
         EmitLabel(ui, ref layout, "Tooltips");
         ui.TooltipAt(IdTooltipInfo, layout.X, layout.Y + 5, 18, 18,
-            "A compact tooltip control for settings rows. Hover targets can be standalone or attached to any control.");
+            "A little context, right where you need it. Tooltips work on their own or on any control.");
         ui.LabelAt(layout.X + 28, layout.Y, layout.W - 28, layout.ControlHeight, "Hover the ? icon or the button.");
         AdvanceRow(ref layout, layout.ControlHeight);
 
         ui.ButtonAt(IdTooltipButton, layout.X, layout.Y, 160, layout.ControlHeight, "Button tooltip")
-            .Tooltip("This tooltip is attached directly to the button via SlimControl.Tooltip().");
+            .Tooltip("Buttons can explain themselves, too. Move away to dismiss this tooltip.");
         ui.SetMinSize(IdTooltipButton, width: 160);
         AdvanceRow(ref layout, layout.ControlHeight);
 
         EmitLabel(ui, ref layout, "Progress bar");
-        float barH = 22;
+        float barH = 8;
         SlimControl progress = ui.ProgressAt(IdProgress, layout.X, layout.Y, layout.W, barH, 0, 100, 40);
         AdvanceRow(ref layout, barH);
 
-        EmitLabel(ui, ref layout, "Slider");
+        EmitLabel(ui, ref layout, "Slider — drag to update the progress bar");
         SlimControl slider = default;
         slider = ui.SliderAt(IdSlider, layout.X, layout.Y, layout.W, layout.ControlHeight, 0, 100, 40, onChanged: () =>
         {
             progress.SetProgress(slider.Number);
         });
         AdvanceRow(ref layout, layout.ControlHeight);
+    }
+
+    private void BuildSectionShader(SlimUiBuilder ui, float cx, float cy, float cw)
+    {
+        SectionLayout layout = MakeLayout(cx, cy, cw);
+        EmitSectionTitle(ui, ref layout, "Shader", "Live effects. The same interactive controls underneath.");
+        layout.Y += layout.RowGap - layout.LabelGap;
+
+        // Match the native demo's whole-pixel effect bounds at any DPI.
+        float scale = ui.DpiScale;
+        float PixelAligned(float value) => MathF.Floor(value * scale) / scale;
+        float x = PixelAligned(layout.X);
+        float imageW = PixelAligned(300);
+        float imageH = PixelAligned(_logo.Width > 0 ? 300f * _logo.Height / _logo.Width : 140);
+        ui.ImageAt(x, PixelAligned(layout.Y), imageW, imageH, _logo, IdShaderImage);
+        AdvanceRow(ref layout, imageH);
+
+        EmitLabel(ui, ref layout, "Text input");
+        ui.TextBoxAt(IdEdit, x, PixelAligned(layout.Y), PixelAligned(layout.W), PixelAligned(layout.ControlHeight),
+            placeholder: "Type something…");
+        layout.Y += layout.ControlHeight + layout.RowGap * 1.5f;
+
+        ui.ButtonAt(IdShaderPause, layout.X, layout.Y, 110, layout.ControlHeight, _shaderPaused ? "Resume" : "Pause", onClick: () =>
+        {
+            _shaderPaused = !_shaderPaused;
+            ui.Window.RequestRebuild();
+        });
+        SlimControl speed = default;
+        speed = ui.SliderAt(IdShaderSpeed, layout.X + 126, layout.Y, layout.W - 126, layout.ControlHeight,
+            0, 300, _shaderSpeed * 100, onChanged: () =>
+        {
+            _shaderSpeed = speed.Number / 100;
+            SampleShader.Configure(ui.Window, IdShaderImage, IdEdit, true, _shaderPaused, _shaderSpeed);
+        });
     }
 
     private void BuildSectionChoices(SlimUiBuilder ui, float cx, float cy, float cw, float chTotal)
@@ -190,7 +251,7 @@ internal sealed class SlimUiDemo
         ];
 
         SectionLayout layout = MakeLayout(cx, cy, cw);
-        EmitSectionTitle(ui, ref layout, "Choices");
+        EmitSectionTitle(ui, ref layout, "Choices", "Pick one, select a few, or find your color.");
 
         float colGap = 24;
         float colW = (layout.W - colGap) * 0.5f;
@@ -234,18 +295,20 @@ internal sealed class SlimUiDemo
     private void BuildSectionTextInput(SlimUiBuilder ui, float cx, float cy, float cw, float chTotal)
     {
         SectionLayout layout = MakeLayout(cx, cy, cw);
-        EmitSectionTitle(ui, ref layout, "Text input");
+        layout.RowGap = 8;
+        EmitSectionTitle(ui, ref layout, "Text input", "Text, numbers, and shortcuts.");
 
         EmitLabel(ui, ref layout, "Edit");
         ui.TextBoxAt(IdEdit, layout.X, layout.Y, layout.W, layout.ControlHeight, placeholder: "Type something…");
         AdvanceRow(ref layout, layout.ControlHeight);
 
-        EmitLabel(ui, ref layout, "Keyboard shortcut");
-        ui.KeyboardShortcutRecorderAt(IdHotkey, layout.X, layout.Y, layout.W, layout.ControlHeight, 0x71, prompt: "Press a key combination...");
-        AdvanceRow(ref layout, layout.ControlHeight);
-
-        EmitLabel(ui, ref layout, "Gamepad shortcut");
-        ui.GamepadShortcutRecorderAt(IdGamepadShortcut, layout.X, layout.Y, layout.W, layout.ControlHeight, 0x4020, prompt: "Press gamepad buttons...");
+        float colW = (layout.W - 12) * 0.5f;
+        float rightX = layout.X + colW + 12;
+        ui.LabelAt(layout.X, layout.Y, colW, layout.LabelHeight, "Keyboard shortcut");
+        ui.LabelAt(rightX, layout.Y, colW, layout.LabelHeight, "Gamepad shortcut");
+        layout.Y += layout.LabelHeight + layout.LabelGap;
+        ui.KeyboardShortcutRecorderAt(IdHotkey, layout.X, layout.Y, colW, layout.ControlHeight, 0x71, prompt: "Press a key combination...");
+        ui.GamepadShortcutRecorderAt(IdGamepadShortcut, rightX, layout.Y, colW, layout.ControlHeight, 0x4020, prompt: "Press gamepad buttons...");
         AdvanceRow(ref layout, layout.ControlHeight);
 
         EmitLabel(ui, ref layout, "Spinner");
@@ -256,12 +319,13 @@ internal sealed class SlimUiDemo
         EmitLabel(ui, ref layout, "Textview (multi-line, soft-wrap)");
         float tvH = Math.Max(cy + chTotal - layout.Y, 80);
         ui.TextViewAt(IdTextView, layout.X, layout.Y, layout.W, tvH, TextViewSeed, capacity: 4096);
+        ui.SetMinClientSize(height: layout.Y + 80 + layout.LabelHeight + layout.LabelGap + layout.ControlHeight + 42);
     }
 
     private void BuildSectionContainers(SlimUiBuilder ui, float cx, float cy, float cw, float chTotal)
     {
         SectionLayout layout = MakeLayout(cx, cy, cw);
-        EmitSectionTitle(ui, ref layout, "Containers");
+        EmitSectionTitle(ui, ref layout, "Containers", "Explore groups, tabs, and layouts.");
 
         float sectionBottom = cy + chTotal;
         float scrollY = layout.Y;
@@ -388,10 +452,10 @@ internal sealed class SlimUiDemo
         ui.SetScrollViewContentHeight(IdScrollViewDemo, y - scrollY);
     }
 
-    private static void BuildSectionFlex(SlimUiBuilder ui, float cx, float cy, float cw, float chTotal)
+    private void BuildSectionFlex(SlimUiBuilder ui, float cx, float cy, float cw, float chTotal)
     {
         SectionLayout layout = MakeLayout(cx, cy, cw);
-        EmitSectionTitle(ui, ref layout, "Flex");
+        EmitSectionTitle(ui, ref layout, "Flex", "Resize to see controls grow and shrink.");
 
         if (!ui.PushRootRect(layout.X, layout.Y, layout.W, 0, layout.RowGap)) return;
 
@@ -442,15 +506,15 @@ internal sealed class SlimUiDemo
         ui.PopContainer();
 
         float vstackMinH = 2 * layout.LabelHeight + 80 + 2 * 8;
-        float sectionMinH = 36 + layout.RowGap + consumed + layout.RowGap + layout.LabelHeight + layout.LabelGap + vstackMinH;
-        float barReserve = 14 + layout.ControlHeight + layout.LabelHeight + layout.LabelGap + 10;
+        float sectionMinH = 62 + layout.RowGap + consumed + layout.RowGap + layout.LabelHeight + layout.LabelGap + vstackMinH;
+        float barReserve = 14 + layout.ControlHeight + layout.LabelHeight + layout.LabelGap + 28;
         ui.SetMinClientSize(height: cy + sectionMinH + barReserve);
     }
 
-    private static void BuildSectionDeclContainers(SlimUiBuilder ui, float cx, float cy, float cw, float chTotal)
+    private void BuildSectionDeclContainers(SlimUiBuilder ui, float cx, float cy, float cw, float chTotal)
     {
         SectionLayout layout = MakeLayout(cx, cy, cw);
-        EmitSectionTitle(ui, ref layout, "Declarative containers");
+        EmitSectionTitle(ui, ref layout, "Declarative containers", "Nested layouts. Scrolling and clipping.");
 
         float remainingY = layout.Y;
         float remainingH = Math.Max(0, cy + chTotal - remainingY);
@@ -485,8 +549,8 @@ internal sealed class SlimUiDemo
 
         ui.PopContainer();
 
-        float sectionMinH = 36 + layout.RowGap + 120 + 8 + 100;
-        float barReserve = 14 + layout.ControlHeight + layout.LabelHeight + layout.LabelGap + 10;
+        float sectionMinH = 62 + layout.RowGap + 120 + 8 + 100;
+        float barReserve = 14 + layout.ControlHeight + layout.LabelHeight + layout.LabelGap + 28;
         ui.SetMinClientSize(width: cx + 340 + 12, height: cy + sectionMinH + barReserve);
     }
 
@@ -495,14 +559,14 @@ internal sealed class SlimUiDemo
         float comboW = 140;
         float gap = 8;
         float rightTotal = comboW * 2 + gap;
-        float rightX = windowWidth - rightTotal - 10;
+        float rightX = windowWidth - rightTotal - 28;
         float schemeX = rightX;
         float typoX = rightX + comboW + gap;
 
         int selectedScheme = Math.Max(0, Array.IndexOf(SchemeNames, _schemeName));
         int selectedTypography = Math.Max(0, Array.IndexOf(TypographyNames, _typographyName));
 
-        ui.LabelAt(schemeX, barY, comboW, labelHeight, "Scheme", IdLblScheme);
+        ui.LabelAt(schemeX, barY, comboW, labelHeight, "Theme", IdLblScheme).StyleColor(SlimStyleColor.Text, SecondaryText);
         SlimControl schemeCombo = default;
         schemeCombo = ui.ComboBoxAt(IdComboScheme, schemeX, barY + labelHeight + labelGap, comboW, controlHeight, SchemeNames, selectedScheme, onChanged: () =>
         {
@@ -513,7 +577,7 @@ internal sealed class SlimUiDemo
             ui.Window.RequestRebuild();
         });
 
-        ui.LabelAt(typoX, barY, comboW, labelHeight, "Typography", IdLblTypo);
+        ui.LabelAt(typoX, barY, comboW, labelHeight, "Typography", IdLblTypo).StyleColor(SlimStyleColor.Text, SecondaryText);
         SlimControl typographyCombo = default;
         typographyCombo = ui.ComboBoxAt(IdComboTypo, typoX, barY + labelHeight + labelGap, comboW, controlHeight, TypographyNames, selectedTypography, onChanged: () =>
         {
@@ -525,10 +589,10 @@ internal sealed class SlimUiDemo
         });
 
         const SlimAnchor anchor = SlimAnchor.Right | SlimAnchor.Bottom;
-        float leadRightMargin = comboW + gap + 10 + contentGap;
-        float trailRightMargin = 10;
-        float labelBottomMargin = labelGap + controlHeight + 10 + 14;
-        float comboBottomMargin = 10 + 14;
+        float leadRightMargin = comboW + gap + 28 + contentGap;
+        float trailRightMargin = 28;
+        float labelBottomMargin = labelGap + controlHeight + 28 + 14;
+        float comboBottomMargin = 28 + 14;
 
         ui.SetAnchor(IdLblScheme, anchor, leadRightMargin, labelBottomMargin);
         ui.SetAnchor(IdComboScheme, anchor, leadRightMargin, comboBottomMargin);
@@ -568,13 +632,17 @@ internal sealed class SlimUiDemo
     private static void EmitLabel(SlimUiBuilder ui, ref SectionLayout layout, string text)
     {
         ui.LabelAt(layout.X, layout.Y, layout.W, layout.LabelHeight, text);
+        ui.LastTextStyle(semibold: true);
         layout.Y += layout.LabelHeight + layout.LabelGap;
     }
 
-    private static void EmitSectionTitle(SlimUiBuilder ui, ref SectionLayout layout, string text)
+    private void EmitSectionTitle(SlimUiBuilder ui, ref SectionLayout layout, string text, string description)
     {
         ui.TitleAt(layout.X, layout.Y, layout.W, 36, text);
-        layout.Y += 36 + layout.RowGap;
+        layout.Y += 40;
+        ui.LabelAt(layout.X, layout.Y, layout.W, 22, description);
+        ui.LastStyleColor(SlimStyleColor.Text, SecondaryText);
+        layout.Y += 22 + layout.RowGap;
     }
 
     private static void AdvanceRow(ref SectionLayout layout, float controlHeight)

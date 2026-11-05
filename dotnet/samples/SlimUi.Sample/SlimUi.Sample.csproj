@@ -7,13 +7,16 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\SlimUi\SlimUi.csproj" />
+    <ProjectReference Include="..\..\src\SlimUi\SlimUi.csproj" AdditionalProperties="SlimUiCopyNativeLibrary=false" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\native\build\Release\SlimUi.Native.dll"
+    <None Include="..\..\native\build\Release\SlimUi.Sample.Native.dll"
           Link="SlimUi.Native.dll"
           CopyToOutputDirectory="PreserveNewest"
-          Condition="Exists('..\..\native\build\Release\SlimUi.Native.dll')" />
+          CopyToPublishDirectory="PreserveNewest"
+          Condition="Exists('..\..\native\build\Release\SlimUi.Sample.Native.dll')" />
+    <None Include="..\..\..\logo.png" Link="logo.png"
+          CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
