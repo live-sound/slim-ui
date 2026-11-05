@@ -721,6 +721,99 @@ UTEST_F(host_fx, tooltip_timer_shows_without_further_mouse_movement_and_leave_hi
     ASSERT_TRUE(hidden);
 }
 
+/* A tooltip's ink sits in the middle of its panel on both axes, whatever the font. MS Gothic is here because its
+ * embedded bitmaps don't match its outline metrics. */
+UTEST_F(host_fx, tooltip_ink_sits_in_the_middle_of_its_panel) {
+    enum { size = 240 };
+    static const wchar_t* const fonts[] = { NULL, L"Cambria", L"Consolas", L"Comic Sans MS", L"MS Gothic", L"Segoe UI Variable Text" };
+    static const wchar_t* const texts[] = { L"Hello", L"Typography", L"HOLD", L"some", L"Two lines\nof text", L"\x65E5\x672C\x8A9E" };
+    SuiRenderer renderer;
+    BITMAPINFO bi;
+    RECT bounds = { 0, 0, size, size };
+    const unsigned char* bits = NULL;
+    HDC dc = CreateCompatibleDC(NULL);
+    HBITMAP bitmap;
+    int f, t, off_centre = 0, unmeasured = 0;
+
+    memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth = size;
+    bi.bmiHeader.biHeight = -size;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bitmap = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, (void**)&bits, NULL, 0);
+    ASSERT_TRUE(bitmap != NULL);
+    SelectObject(dc, bitmap);
+    ASSERT_TRUE(sui__popup_renderer_init(&renderer, utest_fixture->hwnd));
+
+    for (f = 0; f < (int)(sizeof(fonts) / sizeof(fonts[0])); f++) {
+        for (t = 0; t < (int)(sizeof(texts) / sizeof(texts[0])); t++) {
+            float text_h = sui_renderer_measure_text_height_ex(&renderer, texts[t], 140.0f, 0, 10.0f, fonts[f]);
+            RECT ink;
+            SuiRect text;
+            int panel_w, panel_h, level, x, y, top = -1, bottom = -1, left = size, right = -1;
+
+            if (!sui__tooltip_measure_ink(&renderer, texts[t], 140.0f, text_h, 20, 0, 10.0f, fonts[f], &ink)) {
+                unmeasured++;
+                continue;
+            }
+            /* The minimums are bigger than a short text's ink, and odd, so both ways of sizing a side are covered. */
+            sui__tooltip_fit_ink(&ink, 10, 97, 31, 140.0f, text_h, &panel_w, &panel_h, &text);
+            ASSERT_TRUE(SUCCEEDED(((ID2D1DCRenderTarget*)renderer.render_target)->lpVtbl->BindDC(
+                (ID2D1DCRenderTarget*)renderer.render_target, dc, &bounds)));
+            sui_renderer_begin(&renderer);
+            sui_renderer_clear(&renderer, 0xFFFFFF);
+            sui_renderer_draw_text_ex(&renderer, texts[t], text.left, text.top, text.right - text.left,
+                                      text.bottom - text.top, 0x000000, 0, 10.0f, fonts[f]);
+            sui_renderer_end(&renderer);
+            GdiFlush();
+            level = sui__tooltip_ink_level(bits, (size_t)size * size);
+            for (y = 0; y < size; y++) {
+                for (x = 0; x < size; x++) {
+                    if (bits[(y * size + x) * 4 + 1] >= level) continue;
+                    if (top < 0) top = y;
+                    bottom = y;
+                    if (x < left) left = x;
+                    if (x > right) right = x;
+                }
+            }
+            off_centre += top != panel_h - 1 - bottom || left != panel_w - 1 - right;
+        }
+    }
+
+    sui_renderer_release(&renderer);
+    DeleteDC(dc);
+    DeleteObject(bitmap);
+    ASSERT_EQ(0, unmeasured);
+    ASSERT_EQ(0, off_centre);
+}
+
+/* Thin fonts never reach black, so what counts as ink follows the text's own darkest pixel. */
+UTEST(tooltip, ink_level_follows_the_darkest_pixel) {
+    unsigned char pixels[3 * 4];
+    memset(pixels, 255, sizeof(pixels));
+    ASSERT_EQ(255, sui__tooltip_ink_level(pixels, 3));
+    pixels[4 + 1] = 0;
+    ASSERT_EQ(224, sui__tooltip_ink_level(pixels, 3));
+    pixels[4 + 1] = 151;
+    ASSERT_EQ(242, sui__tooltip_ink_level(pixels, 3));
+}
+
+/* The popup outlives typography changes, so it has to take the new one up the next time it shows. */
+UTEST_F(host_fx, tooltip_popup_follows_the_hosts_typography) {
+    SuiControlHost* host = &utest_fixture->host;
+    SuiTypography typography = sui_typography_default;
+    int followed;
+
+    ASSERT_TRUE(sui__tooltip_ensure_window(host));
+    wcscpy(typography.body.family, L"Cambria");
+    utest_fixture->renderer.typography = typography;
+    ASSERT_TRUE(sui__tooltip_ensure_window(host));
+    followed = !wcscmp(host->tooltip_renderer.font_family, L"Cambria");
+    sui_ctrl_destroy_tooltip_popup(host);
+    ASSERT_TRUE(followed);
+}
+
 UTEST(shortcut, bluetooth_basic_report_does_not_invent_edge_fn) {
     BYTE basic[78] = {0};
     BYTE enhanced[78] = {0};

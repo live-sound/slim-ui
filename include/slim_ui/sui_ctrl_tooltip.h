@@ -66,6 +66,97 @@ static void sui_ctrl_draw_tooltip(SuiControlHost* host, SuiControl* ctrl) {
         (ctrl->state & SUI_CTRL_BOLD) ? 1 : 0, font_size, sui_ctrl_style_font_family(ctrl));
 }
 
+/* The level a pixel must be darker than to count as ink, on white: an eighth of the way to the text's darkest
+ * pixel. Anything fainter is antialiasing, not a letter's edge. It's that low, and relative, for thin fonts: their
+ * stems stay far lighter than their horizontal strokes, and they're still what the eye sees as the letter. */
+static int sui__tooltip_ink_level(const unsigned char* bits, size_t pixels) {
+    int darkest = 255;
+    size_t i;
+    for (i = 0; i < pixels; i++)
+        if (bits[i * 4 + 1] < darkest) darkest = bits[i * 4 + 1];
+    return 255 - (255 - darkest) / 8;
+}
+
+/* Finds the rendered ink of text wrapped to wrap_w, relative to where the text starts. A font's line box leaves
+ * uneven room around its letters, and its metrics miss hinting and embedded bitmaps, so only the pixels hold for
+ * every font. The text draws `slack` pixels in from the bitmap's edges to catch ink outside its line box. Returns 0
+ * when it can't tell. */
+static int sui__tooltip_measure_ink(SuiRenderer* r, const wchar_t* text, float wrap_w, float text_h, int slack,
+                                    int bold, float font_size, const wchar_t* font_family, RECT* ink) {
+    ID2D1RenderTarget* rt = (ID2D1RenderTarget*)r->render_target;
+    int w = (int)wrap_w + slack * 2, h = (int)text_h + slack * 2, x, y, level, found = 0;
+    HDC dc = CreateCompatibleDC(NULL);
+    HBITMAP bmp;
+    HGDIOBJ old_bmp;
+    const unsigned char* bits = NULL;
+    BITMAPINFO bi;
+    RECT bind_rc;
+    D2D1_COLOR_F white;
+
+    if (!dc) return 0;
+    memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = w;
+    bi.bmiHeader.biHeight = -h;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    bmp = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, (void**)&bits, NULL, 0);
+    if (!bmp) {
+        DeleteDC(dc);
+        return 0;
+    }
+    old_bmp = SelectObject(dc, bmp);
+    bind_rc.left = 0; bind_rc.top = 0; bind_rc.right = w; bind_rc.bottom = h;
+    if (SUCCEEDED(((ID2D1DCRenderTarget*)rt)->lpVtbl->BindDC((ID2D1DCRenderTarget*)rt, dc, &bind_rc))) {
+        white.r = white.g = white.b = white.a = 1.0f;
+        rt->lpVtbl->BeginDraw(rt);
+        rt->lpVtbl->Clear(rt, &white);
+        sui_renderer_draw_text_ex(r, text, (float)slack, (float)slack, wrap_w, text_h, 0x000000,
+                                  bold, font_size, font_family);
+        if (SUCCEEDED(rt->lpVtbl->EndDraw(rt, NULL, NULL))) {
+            GdiFlush();
+            level = sui__tooltip_ink_level(bits, (size_t)w * (size_t)h);
+            for (y = 0; y < h; y++) {
+                const unsigned char* row = bits + (size_t)y * (size_t)w * 4u;
+                for (x = 0; x < w; x++) {
+                    if (row[x * 4 + 1] >= level) continue;
+                    if (!found) {
+                        ink->left = x; ink->top = y; ink->right = x + 1;
+                        found = 1;
+                    }
+                    if (x < ink->left) ink->left = x;
+                    if (x >= ink->right) ink->right = x + 1;
+                    ink->bottom = y + 1;
+                }
+            }
+        }
+    }
+    SelectObject(dc, old_bmp);
+    DeleteObject(bmp);
+    DeleteDC(dc);
+    if (found) OffsetRect(ink, -slack, -slack);
+    return found;
+}
+
+/* One side of the panel: padding at both ends of the ink, or the minimum, grown a pixel if the room around the ink
+ * wouldn't otherwise halve into whole pixels. */
+static int sui__tooltip_panel_side(int ink, int pad, int minimum) {
+    return ink + pad * 2 >= minimum ? ink + pad * 2 : minimum + ((minimum - ink) & 1);
+}
+
+/* Sizes the panel around the ink and centres the ink in it, so the margins match whatever the font. */
+static void sui__tooltip_fit_ink(const RECT* ink, int pad, int min_w, int min_h, float wrap_w, float text_h,
+                                 int* panel_w, int* panel_h, SuiRect* text) {
+    int ink_w = ink->right - ink->left, ink_h = ink->bottom - ink->top;
+    *panel_w = sui__tooltip_panel_side(ink_w, pad, min_w);
+    *panel_h = sui__tooltip_panel_side(ink_h, pad, min_h);
+    text->left = (float)((*panel_w - ink_w) / 2 - ink->left);
+    text->top = (float)((*panel_h - ink_h) / 2 - ink->top);
+    text->right = text->left + wrap_w;
+    text->bottom = text->top + text_h;
+}
+
 static const wchar_t* sui__tooltip_class_name(void) {
     return L"SlimUiTooltipPopup";
 }
@@ -73,7 +164,8 @@ static const wchar_t* sui__tooltip_class_name(void) {
 static int sui__tooltip_register_class(void);
 static LRESULT CALLBACK sui__tooltip_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp);
 
-static int sui__tooltip_render_layered(SuiControlHost* host, SuiControl* ctrl, int x, int y, int w, int h) {
+static int sui__tooltip_render_layered(SuiControlHost* host, SuiControl* ctrl, int x, int y, int w, int h,
+                                       const SuiRect* text) {
     SuiRenderer* r;
     const SuiColorScheme* sc;
     HDC screen_dc, mem_dc;
@@ -89,7 +181,7 @@ static int sui__tooltip_render_layered(SuiControlHost* host, SuiControl* ctrl, i
     D2D1_COLOR_F clear_color, shadow_color;
     D2D1_ROUNDED_RECT shadow_rect;
     HRESULT hr;
-    float s, pad_x, pad_y, radius, font_size, shadow_blur;
+    float s, radius, font_size, shadow_blur;
     float bx, by, bw, bh;
     int shadow_margin, shadow_offset_y, shadow_layers, i;
     int ok = 0;
@@ -129,8 +221,6 @@ static int sui__tooltip_render_layered(SuiControlHost* host, SuiControl* ctrl, i
     if (SUCCEEDED(((ID2D1DCRenderTarget*)r->render_target)->lpVtbl->BindDC(
             (ID2D1DCRenderTarget*)r->render_target, mem_dc, &bind_rc))) {
         s = sui_ctrl_dpi_scale(host);
-        pad_x = 10.0f * s;
-        pad_y = 7.0f * s;
         radius = 7.0f * s;
         font_size = sui_ctrl_style_font_size(ctrl, 10.0f);
         font_family = sui_ctrl_style_font_family(ctrl);
@@ -184,8 +274,8 @@ static int sui__tooltip_render_layered(SuiControlHost* host, SuiControl* ctrl, i
         sui_renderer_fill_rounded_rect(r, bx, by, bw, bh, radius, bg_color);
         sui_renderer_draw_rounded_rect(r, bx + 0.5f * s, by + 0.5f * s,
             bw - s, bh - s, radius, border_color, 1.0f);
-        sui_renderer_draw_text_ex(r, host->tooltip_text, bx + pad_x, by + pad_y,
-            bw - pad_x * 2.0f, bh - pad_y * 2.0f, text_color, bold, font_size, font_family);
+        sui_renderer_draw_text_ex(r, host->tooltip_text, bx + text->left, by + text->top,
+            text->right - text->left, text->bottom - text->top, text_color, bold, font_size, font_family);
         hr = rt->lpVtbl->EndDraw(rt, NULL, NULL);
         if (SUCCEEDED(hr)) {
             dst.x = x; dst.y = y;
@@ -250,20 +340,22 @@ static LRESULT CALLBACK sui__tooltip_wndproc(HWND hwnd, UINT msg, WPARAM wp, LPA
 
 static int sui__tooltip_ensure_window(SuiControlHost* host) {
     if (!host) return 0;
-    if (host->tooltip_hwnd) return 1;
-    if (!sui__tooltip_register_class()) return 0;
+    if (!host->tooltip_hwnd) {
+        if (!sui__tooltip_register_class()) return 0;
 
-    host->tooltip_hwnd = CreateWindowExW(
-        WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
-        sui__tooltip_class_name(), L"", WS_POPUP,
-        0, 0, 16, 16, host->hwnd, NULL, GetModuleHandleW(NULL), host);
-    if (!host->tooltip_hwnd) return 0;
+        host->tooltip_hwnd = CreateWindowExW(
+            WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST | WS_EX_NOACTIVATE,
+            sui__tooltip_class_name(), L"", WS_POPUP,
+            0, 0, 16, 16, host->hwnd, NULL, GetModuleHandleW(NULL), host);
+        if (!host->tooltip_hwnd) return 0;
 
-    if (!sui__popup_renderer_init(&host->tooltip_renderer, host->tooltip_hwnd)) {
-        DestroyWindow(host->tooltip_hwnd);
-        host->tooltip_hwnd = NULL;
-        return 0;
+        if (!sui__popup_renderer_init(&host->tooltip_renderer, host->tooltip_hwnd)) {
+            DestroyWindow(host->tooltip_hwnd);
+            host->tooltip_hwnd = NULL;
+            return 0;
+        }
     }
+    /* Every time, not only at creation: the host's typography can change while the popup lives on. */
     if (host->renderer)
         sui_renderer_apply_typography(&host->tooltip_renderer, &host->renderer->typography);
     return 1;
@@ -291,22 +383,22 @@ static void sui_ctrl_destroy_tooltip_popup(SuiControlHost* host) {
 }
 
 static void sui__tooltip_calc_rect(SuiControlHost* host, SuiControl* ctrl,
-                                   int* out_x, int* out_y, int* out_w, int* out_h) {
-    RECT work;
+                                   int* out_x, int* out_y, int* out_w, int* out_h, SuiRect* out_text) {
+    SuiRenderer* r = &host->tooltip_renderer;
+    RECT work, ink;
     HMONITOR mon;
     MONITORINFO mi;
     POINT anchor;
     POINT left_anchor;
-    float s, pad_x, pad_y, gap, margin, font_size, anchor_w, anchor_font_size, anchor_text_w;
-    float work_w, max_w, min_w, text_w, text_h, tip_w, tip_h, text_area_w;
-    int panel_x, panel_y, panel_w, panel_h, shadow_margin;
+    float s, pad_x, gap, margin, font_size, anchor_w, anchor_font_size, anchor_text_w;
+    float work_w, max_w, min_w, text_w, text_h, tip_w, text_area_w;
+    int pad, panel_x, panel_y, panel_w, panel_h, shadow_margin;
     int x, y, w, h;
     const wchar_t* font_family;
     int bold;
 
     s = sui_ctrl_dpi_scale(host);
     pad_x = 10.0f * s;
-    pad_y = 7.0f * s;
     gap = 10.0f * s;
     margin = 8.0f * s;
     font_size = sui_ctrl_style_font_size(ctrl, 10.0f);
@@ -326,24 +418,21 @@ static void sui__tooltip_calc_rect(SuiControlHost* host, SuiControl* ctrl,
     if (max_w < min_w) min_w = max_w;
     if (min_w < 48.0f * s) min_w = 48.0f * s;
 
-    text_w = sui_renderer_measure_text_width_ex(host->renderer, ctrl->tooltip,
-        bold, font_size, font_family);
+    text_w = sui_renderer_measure_text_width_ex(r, ctrl->tooltip, bold, font_size, font_family);
     tip_w = text_w + pad_x * 2.0f;
     if (tip_w < min_w) tip_w = min_w;
     if (tip_w > max_w) tip_w = max_w;
     text_area_w = tip_w - pad_x * 2.0f;
     if (text_area_w < 16.0f * s) text_area_w = 16.0f * s;
 
-    text_h = sui_renderer_measure_text_height_ex(host->renderer, ctrl->tooltip,
-        text_area_w, bold, font_size, font_family);
+    text_h = sui_renderer_measure_text_height_ex(r, ctrl->tooltip, text_area_w, bold, font_size, font_family);
     if (text_h <= 0.0f) text_h = 18.0f * s;
-    tip_h = text_h + pad_y * 2.0f;
-    if (tip_h < 30.0f * s) tip_h = 30.0f * s;
 
-    panel_w = (int)(tip_w + 0.5f);
-    panel_h = (int)(tip_h + 0.5f);
-    if (panel_w < 1) panel_w = 1;
-    if (panel_h < 1) panel_h = 1;
+    pad = (int)(pad_x + 0.5f);
+    if (!sui__tooltip_measure_ink(r, ctrl->tooltip, text_area_w, text_h, pad * 2, bold, font_size, font_family, &ink))
+        SetRect(&ink, 0, 0, (int)text_area_w, (int)text_h);
+    sui__tooltip_fit_ink(&ink, pad, (int)(min_w + 0.5f), (int)(30.0f * s + 0.5f), text_area_w, text_h,
+                         &panel_w, &panel_h, out_text);
     shadow_margin = (int)(SUI_TOOLTIP_SHADOW_MARGIN_DIP * s + 0.5f);
     if (shadow_margin < 1) shadow_margin = 1;
     w = panel_w + shadow_margin * 2;
@@ -394,14 +483,15 @@ static void sui__tooltip_calc_rect(SuiControlHost* host, SuiControl* ctrl,
 static void sui_ctrl_show_tooltip_popup(SuiControlHost* host, int ctrl_idx) {
     SuiControl* ctrl;
     int x, y, w, h;
+    SuiRect text;
     if (!host || ctrl_idx < 0 || ctrl_idx >= host->control_count) return;
     ctrl = &host->controls[ctrl_idx];
     if (!ctrl->tooltip || !ctrl->tooltip[0]) return;
     if (!sui__tooltip_ensure_window(host)) return;
 
     host->tooltip_text = ctrl->tooltip;
-    sui__tooltip_calc_rect(host, ctrl, &x, &y, &w, &h);
-    if (sui__tooltip_render_layered(host, ctrl, x, y, w, h)) {
+    sui__tooltip_calc_rect(host, ctrl, &x, &y, &w, &h, &text);
+    if (sui__tooltip_render_layered(host, ctrl, x, y, w, h, &text)) {
         SetWindowPos(host->tooltip_hwnd, HWND_TOPMOST, 0, 0, 0, 0,
             SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
     } else {
