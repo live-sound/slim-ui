@@ -799,6 +799,34 @@ UTEST(tooltip, ink_level_follows_the_darkest_pixel) {
     ASSERT_EQ(242, sui__tooltip_ink_level(pixels, 3));
 }
 
+static void count_paint(SuiControlHost* host, SuiControl* ctrl, void* user) {
+    ++*(int*)user;
+    sui_ctrl_draw_self(host, ctrl);
+}
+
+/* A paint function replaces a control's drawing, leaves input alone, and goes away with a rebuild. */
+UTEST_F(host_fx, paint_function_draws_a_control_in_the_toolkits_place) {
+    SuiControlHost* host = &utest_fixture->host;
+    int paints = 0, idx = sui_ctrl_add_button(host, 71, 0, 0, 80, 30, L"OK", 0);
+
+    sui_ctrl_set_paint(host, 71, count_paint, &paints);
+    sui_ctrl_draw_all(host);
+    ASSERT_EQ(1, paints);
+
+    host->controls[idx].state |= SUI_CTRL_HIDDEN;
+    sui_ctrl_draw_all(host);
+    ASSERT_EQ(1, paints);
+    host->controls[idx].state &= ~SUI_CTRL_HIDDEN;
+
+    ASSERT_EQ(idx, sui_ctrl_hit_test(host, 40.0f, 15.0f));
+
+    sui_ctrl_clear_page(host);
+    sui_ctrl_add_button(host, 71, 0, 0, 80, 30, L"OK", 0);
+    sui_ctrl_draw_all(host);
+    ASSERT_EQ(1, paints);
+    sui_ctrl_clear_page(host);
+}
+
 /* The popup outlives typography changes, so it has to take the new one up the next time it shows. */
 UTEST_F(host_fx, tooltip_popup_follows_the_hosts_typography) {
     SuiControlHost* host = &utest_fixture->host;

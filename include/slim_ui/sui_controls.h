@@ -501,31 +501,47 @@ static void sui_ctrl_tabs_draw_content_subtree(SuiControlHost* host, SuiControl*
     sui_ctrl_tabs_draw_content_subtree_xy(host, tabs, offset_x, 0.0f, opacity);
 }
 
+/* Draws one control the usual way, without its children. A paint function calls this to get the control's own pixels. */
+static void sui_ctrl_draw_self(SuiControlHost* host, SuiControl* c) {
+    switch (c->type) {
+        case SUI_CTRL_BUTTON:       sui_ctrl_draw_button(host, c); break;
+        case SUI_CTRL_CHECKBOX:     sui_ctrl_draw_checkbox(host, c); break;
+        case SUI_CTRL_RADIO:        sui_ctrl_draw_radio(host, c); break;
+        case SUI_CTRL_EDIT:         sui_ctrl_draw_edit(host, c); break;
+        case SUI_CTRL_COMBOBOX:     sui_ctrl_draw_combobox(host, c); break;
+        case SUI_CTRL_SLIDER:       sui_ctrl_draw_slider(host, c); break;
+        case SUI_CTRL_SPINNER:      sui_ctrl_draw_spinner(host, c); break;
+        case SUI_CTRL_COLOR_SWATCH: sui_ctrl_draw_color_swatch(host, c); break;
+        case SUI_CTRL_LABEL:        sui_ctrl_draw_label(host, c); break;
+        case SUI_CTRL_TOOLTIP:      sui_ctrl_draw_tooltip(host, c); break;
+        case SUI_CTRL_NAV_LIST:     sui_ctrl_draw_nav_list(host, c); break;
+        case SUI_CTRL_LIST:         sui_ctrl_draw_list(host, c); break;
+        case SUI_CTRL_TABS:         sui_ctrl_draw_tabs(host, c); break;
+        case SUI_CTRL_IMAGE:        sui_ctrl_draw_image(host, c); break;
+        case SUI_CTRL_SHORTCUT_RECORDER: sui_ctrl_draw_shortcut_recorder(host, c); break;
+        case SUI_CTRL_PROGRESS:     sui_ctrl_draw_progress(host, c); break;
+        case SUI_CTRL_CONTAINER:    sui_ctrl_draw_container(host, c); break;
+        case SUI_CTRL_TEXTVIEW:     sui_ctrl_draw_textview(host, c); break;
+        case SUI_CTRL_SCROLLVIEW:   sui_ctrl_draw_scrollview(host, c); break;
+    }
+}
+
+/* Hands one control's drawing to fn, which can call sui_ctrl_draw_self: into a bitmap, say, to run a shader over the result. Input, focus
+ * and hit testing don't change. Rebuilding the control clears this. */
+static void sui_ctrl_set_paint(SuiControlHost* host, int id, SuiCtrlPaintFn fn, void* user) {
+    SuiControl* c = sui_ctrl_find(host, id);
+    if (c) { c->paint = fn; c->paint_user = user; }
+}
+
 static void sui_ctrl_draw_subtree(SuiControlHost* host, int parent_id) {
     int order[SUI_MAX_CONTROLS];
     int n = sui_ctrl_z_order_scope(host, parent_id, order), i;
     for (i = 0; i < n; i++) {
         SuiControl* c = &host->controls[order[i]];
-        switch (c->type) {
-            case SUI_CTRL_BUTTON:       sui_ctrl_draw_button(host, c); break;
-            case SUI_CTRL_CHECKBOX:     sui_ctrl_draw_checkbox(host, c); break;
-            case SUI_CTRL_RADIO:        sui_ctrl_draw_radio(host, c); break;
-            case SUI_CTRL_EDIT:         sui_ctrl_draw_edit(host, c); break;
-            case SUI_CTRL_COMBOBOX:     sui_ctrl_draw_combobox(host, c); break;
-            case SUI_CTRL_SLIDER:       sui_ctrl_draw_slider(host, c); break;
-            case SUI_CTRL_SPINNER:      sui_ctrl_draw_spinner(host, c); break;
-            case SUI_CTRL_COLOR_SWATCH: sui_ctrl_draw_color_swatch(host, c); break;
-            case SUI_CTRL_LABEL:        sui_ctrl_draw_label(host, c); break;
-            case SUI_CTRL_TOOLTIP:      sui_ctrl_draw_tooltip(host, c); break;
-            case SUI_CTRL_NAV_LIST:     sui_ctrl_draw_nav_list(host, c); break;
-            case SUI_CTRL_LIST:         sui_ctrl_draw_list(host, c); break;
-            case SUI_CTRL_TABS:         sui_ctrl_draw_tabs(host, c); break;
-            case SUI_CTRL_IMAGE:        sui_ctrl_draw_image(host, c); break;
-            case SUI_CTRL_SHORTCUT_RECORDER: sui_ctrl_draw_shortcut_recorder(host, c); break;
-            case SUI_CTRL_PROGRESS:     sui_ctrl_draw_progress(host, c); break;
-            case SUI_CTRL_CONTAINER:    sui_ctrl_draw_container(host, c); break;
-            case SUI_CTRL_TEXTVIEW:     sui_ctrl_draw_textview(host, c); break;
-            case SUI_CTRL_SCROLLVIEW:   sui_ctrl_draw_scrollview(host, c); break;
+        if (c->paint) {
+            if (!(c->state & SUI_CTRL_HIDDEN)) c->paint(host, c, c->paint_user);
+        } else {
+            sui_ctrl_draw_self(host, c);
         }
         if (c->type == SUI_CTRL_CONTAINER) {
             int clipped = !c->d.container.no_clip;

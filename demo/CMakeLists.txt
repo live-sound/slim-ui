@@ -4,7 +4,7 @@ project(sui_demo LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_executable(sui_demo WIN32 main.cpp sui_demo.rc)
+add_executable(sui_demo WIN32 main.cpp shader_effect.cpp sui_demo.rc)
 
 target_include_directories(sui_demo PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../include

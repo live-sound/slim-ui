@@ -97,9 +97,9 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 }
 ```
 
-The complete reference app lives in `demo/main.cpp` (≈1200 lines,
-exercises every control across six sections — Basic, Choices, Text input,
-Containers, Flex, and Decl containers).
+The complete reference app lives in `demo/main.cpp`. It exercises every
+control across seven sections: Basic, Choices, Text input, Containers, Flex,
+Decl containers, and Shader.
 
 ## .NET wrapper
 
@@ -466,8 +466,19 @@ void sui_ctrl_set_button_colors(host, idx, face, border, text, hover, press);
 void sui_ctrl_set_anchor      (host, id, flags, right_margin, bottom_margin);
 void sui_ctrl_set_container_clip(host, id, clip);
 void sui_ctrl_set_tooltip     (host, ctrl_id, text);
+void sui_ctrl_set_paint       (host, id, fn, user);
+void sui_ctrl_draw_self       (host, ctrl);
 SuiControl* sui_ctrl_find     (host, id);
 ```
+
+`sui_ctrl_set_paint` hands one control's drawing to `fn`, a
+`void (*)(SuiControlHost* host, SuiControl* ctrl, void* user)`. `fn` runs where the
+control would have been drawn, so clipping and z-order still apply. It isn't called
+for a hidden control. `sui_ctrl_draw_self` draws the control the usual way, without
+its children, so `fn` can point `renderer.render_target` at a bitmap, draw the control
+into it, restore the target and run a pixel shader over the result. Input, focus and
+hit testing don't change. Rebuilding the control clears the function. `demo/main.cpp`
+has a working example in `PaintWithShader`.
 
 `sui_ctrl_nav_set_content_wheel_region` is an opt-in navigation fallback for
 settings-style pages. A complete wheel detent inside the external content
@@ -1004,6 +1015,7 @@ slim-ui/
 ├── LICENSE                            ← MIT
 ├── CMakeLists.txt                     ← the `slim_ui` interface target, the demo and the tests
 ├── demo/main.cpp                      ← reference app, exercises every control
+├── demo/shader_effect.cpp, shader_*.hlsl ← the demo's pixel shaders
 ├── dotnet/                            ← C#/.NET wrapper, native bridge, AOT-capable sample
 ├── tests/                             ← regression suite (`tests/build-tests.ps1`)
 └── include/slim_ui/

@@ -9,8 +9,11 @@
 #define SUI_FEATURE_CUSTOM_CONTROLS
 #define SUI_FEATURE_PNG
 #define SUI_FEATURE_DECL
+#define SUI_FEATURE_VSYNC
 #define SUI_IMPLEMENTATION
 #include <slim_ui/slim_ui.h>
+
+#include "shader_effect.h"
 
 #define SUI_DEMO_LOGO_RCDATA 1001
 
@@ -23,6 +26,9 @@
 
 /* ---- IDs ----------------------------------------------------------------- */
 enum {
+    ID_SHADER_IMAGE = 94,
+    ID_SHADER_PAUSE = 95,
+    ID_SHADER_SPEED = 96,
     ID_BTN_CLICK    = 101,
     ID_BTN_DEFAULT  = 102,
     ID_BTN_DISABLED = 103,
@@ -88,7 +94,8 @@ enum {
     SEC_CONTAINERS      = 3,
     SEC_FLEX            = 4,
     SEC_DECL_CONTAINERS = 5,
-    SEC_COUNT           = 6,
+    SEC_SHADER          = 6,
+    SEC_COUNT           = 7,
 };
 
 static const wchar_t* kDemoTextviewSeed =
@@ -129,6 +136,11 @@ struct TestbedData {
     int            section = SEC_BASIC;
     int            container_tab = 0;
     SuiImageHandle logo    = {};
+    DemoShader*    shader = nullptr;
+    float          shader_seconds = 0.0f;
+    float          shader_speed = 1.0f;
+    int            shader_paused = 0;
+    int            shader_running = 0;
 };
 
 /* Pull the embedded logo PNG out of the exe's resources. The .rc file points at
@@ -487,6 +499,77 @@ static void BuildSectionTextInput(TestbedData* d, float cx, float cy, float cw, 
             kDemoTextviewSeed, DEMO_TEXTVIEW_CAP, /*readonly=*/0);
         h->min_client_h = L.y + tv_min + L.lh + L.lbl_gap + L.ch + 24.0f * L.s;
     }
+}
+
+/* ---- Section: Shader ---------------------------------------------------- */
+static void ShaderFrame(void* user, float dt_ms) {
+    TestbedData* d = static_cast<TestbedData*>(user);
+    d->shader_seconds += dt_ms * 0.001f * d->shader_speed;
+    InvalidateRect(d->host.hwnd, NULL, FALSE);
+}
+
+/* The shader only runs while someone can see it, so it costs nothing on other pages or when minimized. */
+static void UpdateShaderClock(TestbedData* d) {
+    int wanted = d->section == SEC_SHADER && !d->shader_paused && !IsIconic(d->host.hwnd);
+    if (wanted == d->shader_running) return;
+    if (wanted) {
+        d->shader_running = sui_vsync_attach(&d->host.vsync, ShaderFrame, d);
+    } else {
+        sui_vsync_detach(&d->host.vsync, ShaderFrame, d);
+        d->shader_running = 0;
+    }
+}
+
+/* A control draws itself into a bitmap the usual way, and its shader runs on the way to the screen. */
+static void PaintWithShader(SuiControlHost* host, SuiControl* c, void* user) {
+    TestbedData* d = static_cast<TestbedData*>(user);
+    const int kind = c->type == SUI_CTRL_IMAGE ? DEMO_SHADER_RIPPLE : DEMO_SHADER_GLOW;
+    /* The glow reaches past the edges of the text input. */
+    const float margin = kind == DEMO_SHADER_GLOW ? (float)(int)(14.0f * (float)d->dpi / 96.0f) : 0.0f;
+    void* screen = d->renderer.render_target;
+
+    if (!d->shader) d->shader = demo_shader_create();
+    void* bitmap = demo_shader_begin(d->shader, screen, kind, c->x, c->y, c->w, c->h, margin);
+    if (!bitmap) {
+        sui_ctrl_draw_self(host, c);
+        return;
+    }
+    d->renderer.render_target = bitmap;
+    sui__apply_text_style(&d->renderer, (ID2D1RenderTarget*)bitmap);
+    sui_ctrl_draw_self(host, c);
+    d->renderer.render_target = screen;
+    demo_shader_end(d->shader, kind, d->shader_seconds);
+}
+
+static void BuildSectionShader(TestbedData* d, float cx, float cy, float cw, float ch_total) {
+    SuiControlHost* h = &d->host;
+    SectionLayout L = MakeLayout(d, cx, cy, cw);
+    (void)cy; (void)ch_total;
+
+    EmitSectionTitle(h, &L, L"Shader");
+    EmitLabel(h, &L, L"These controls draw as usual, then a pixel shader runs over their pixels.");
+    L.y += L.row_gap - L.lbl_gap;
+
+    /* Whole pixels, so the bitmaps a control draws into line up with the screen. */
+    const float x = (float)(int)L.x;
+    float image_w = 300.0f * L.s;
+    float image_h = d->logo.width > 0 ? image_w * (float)d->logo.height / (float)d->logo.width : 140.0f * L.s;
+    image_w = (float)(int)image_w;
+    image_h = (float)(int)image_h;
+    sui_ctrl_add_image(h, ID_SHADER_IMAGE, x, (float)(int)L.y, image_w, image_h, d->logo, /*circle_mask=*/0);
+    sui_ctrl_set_paint(h, ID_SHADER_IMAGE, PaintWithShader, d);
+    AdvanceRow(&L, image_h);
+
+    /* Sharing the Text input page's ID keeps what's typed here through a rebuild. */
+    EmitLabel(h, &L, L"Text input");
+    sui_ctrl_add_edit(h, ID_EDIT, x, (float)(int)L.y, (float)(int)L.w, (float)(int)L.ch, L"", L"Type something\x2026", 0);
+    sui_ctrl_set_paint(h, ID_EDIT, PaintWithShader, d);
+    L.y += L.ch + L.row_gap * 1.5f;
+
+    const float button_w = 110.0f * L.s, gap = 16.0f * L.s;
+    sui_ctrl_add_button(h, ID_SHADER_PAUSE, L.x, L.y, button_w, L.ch, d->shader_paused ? L"Resume" : L"Pause", 0);
+    sui_ctrl_add_slider_p(h, ID_SHADER_SPEED, L.x + button_w + gap, L.y, L.w - button_w - gap, L.ch,
+        SuiSliderParams{ .min=0.0f, .max=300.0f, .value=d->shader_speed * 100.0f, .step=1.0f });
 }
 
 /* ---- Section: Containers ------------------------------------------------ */
@@ -964,6 +1047,7 @@ static void BuildControls(TestbedData* d) {
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Containers",     L"\xE7C4", 0xFF4CC2FF);
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Flex",           L"\xE8A9", 0xFF4CC2FF);
     sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Decl containers",L"\xE8B7", 0xFF4CC2FF);
+    sui_ctrl_nav_add_item(h, ID_NAV_CHROME, L"Shader",         L"\xE790", 0xFF4CC2FF);
     /* Nav is full-height: width pins the floor (so the chrome can't shrink
      * narrower than the nav), height stays elastic so the window can shrink
      * past nav.h. NAV_LIST has no text-derived intrinsic, so we set min_w
@@ -981,6 +1065,8 @@ static void BuildControls(TestbedData* d) {
     sui_ctrl_nav_set_content_wheel_region(h, ID_NAV_CHROME,
         content_x, content_y, content_w, content_h, 1);
 
+    UpdateShaderClock(d);
+
     switch (d->section) {
         case SEC_BASIC:           BuildSectionBasic(d,           content_x, content_y, content_w, content_h); break;
         case SEC_CHOICES:         BuildSectionChoices(d,         content_x, content_y, content_w, content_h); break;
@@ -988,6 +1074,7 @@ static void BuildControls(TestbedData* d) {
         case SEC_CONTAINERS:      BuildSectionContainers(d,      content_x, content_y, content_w, content_h); break;
         case SEC_FLEX:            BuildSectionFlex(d,            content_x, content_y, content_w, content_h); break;
         case SEC_DECL_CONTAINERS: BuildSectionDeclContainers(d,  content_x, content_y, content_w, content_h); break;
+        case SEC_SHADER:          BuildSectionShader(d,          content_x, content_y, content_w, content_h); break;
     }
 
     /* ---- Bottom bar — scheme + typography pickers ---- */
@@ -1062,6 +1149,21 @@ static void OnClick(int id, void* udata) {
         BuildControls(d);
         RestoreEdits(&d->host, &snap);
         InvalidateRect(d->host.hwnd, NULL, FALSE);
+        return;
+    }
+
+    if (id == ID_SHADER_PAUSE) {
+        SuiControl* button = sui_ctrl_find(&d->host, ID_SHADER_PAUSE);
+        d->shader_paused = !d->shader_paused;
+        UpdateShaderClock(d);
+        if (button) sui__wstrncpy_z(button->text, d->shader_paused ? L"Resume" : L"Pause", SUI_CTRL_TEXT_MAX);
+        InvalidateRect(d->host.hwnd, NULL, FALSE);
+        return;
+    }
+
+    if (id == ID_SHADER_SPEED) {
+        SuiControl* slider = sui_ctrl_find(&d->host, ID_SHADER_SPEED);
+        if (slider) d->shader_speed = slider->d.slider.value / 100.0f;
         return;
     }
 
@@ -1348,6 +1450,11 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_ERASEBKGND:
         return TRUE;
 
+    case WM_SUI_VSYNC:
+        if (d) sui_ctrl_on_vsync(&d->host);
+        InvalidateRect(hwnd, NULL, FALSE);
+        return 0;
+
     case WM_GETOBJECT:
         if (d) return sui_uia_handle_getobject(&d->host, wp, lp);
         break;
@@ -1356,6 +1463,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (d) {
             sui_renderer_free_image(&d->renderer, d->logo);
             d->logo = SuiImageHandle{};
+            demo_shader_release(d->shader);
+            d->shader = nullptr;
             sui_ctrl_host_release(&d->host);
             sui_renderer_release(&d->renderer);
         }

@@ -50,6 +50,7 @@ slim-ui/
 ├── AGENTS.md                       ← this file
 ├── CMakeLists.txt                  ← `slim_ui` interface target, demo and tests
 ├── demo/main.cpp                   ← exercises every control; treat as smoke test
+├── demo/shader_effect.cpp          ← the Shader page's Direct2D effect; each shader_*.hlsl compiles to shader_*_ps.h
 ├── dotnet/                         ← C#/.NET wrapper and AOT-capable demo
 ├── tests/
 │   ├── sui_tests.c                 ← utest.h-based regression suite
@@ -114,7 +115,8 @@ same change when the wrapper exposes or depends on that behavior.
 
 When adding or changing a demo-covered control in `demo/main.cpp`, update
 `dotnet/samples/SlimUi.Sample/Program.cs` so the .NET demo continues to
-replicate the native SUI demo. If the native control has persistent
+replicate the native SUI demo. The Shader page is the exception: it uses
+Direct2D directly, which the wrapper doesn't expose. If the native control has persistent
 runtime state across rebuilds, update the .NET bridge state preservation
 logic too.
 

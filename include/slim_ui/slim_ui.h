@@ -320,6 +320,9 @@ typedef struct SuiListRow {
 typedef struct SuiControl SuiControl;
 typedef struct SuiControlHost SuiControlHost;
 
+/* Draws one control in the toolkit's place: see sui_ctrl_set_paint. */
+typedef void (*SuiCtrlPaintFn)(SuiControlHost* host, SuiControl* ctrl, void* user);
+
 typedef void (*SuiTabContentPaintFn)(SuiControlHost* host,
                                      SuiControl* tabs,
                                      int tab_index,
@@ -357,6 +360,8 @@ struct SuiControl {
     int           grow;
     int           shrink;
     float         font_size;
+    SuiCtrlPaintFn paint;         /* optional: draws this control instead of the toolkit */
+    void          *paint_user;
     SuiControlStyle *style;       /* optional per-control overrides; NULL = scheme/typography */
     wchar_t       text[SUI_CTRL_TEXT_MAX];
     wchar_t       tooltip_text[SUI_TOOLTIP_TEXT_MAX];
