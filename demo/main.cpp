@@ -144,7 +144,7 @@ struct TestbedData {
 };
 
 /* Pull the embedded logo PNG out of the exe's resources. The .rc file points at
- * slim-ui/logo.png so the same image used by the README is bundled here. */
+ * slim-ui/logo.png, the bitmap version of logo.svg. */
 static SuiImageHandle LoadLogoFromResource(SuiRenderer* r) {
     HMODULE m = GetModuleHandleW(NULL);
     HRSRC   h = FindResourceW(m, MAKEINTRESOURCEW(SUI_DEMO_LOGO_RCDATA), RT_RCDATA);

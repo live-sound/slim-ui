@@ -5,32 +5,44 @@ implementation idiom (`SUI_IMPLEMENTATION` in exactly one TU).
 
 ## Documentation rule (read first)
 
-**Keep `README.md` current — but only for things it already covers.**
+`README.md` is for people. `AGENTS.md` is for LLMs. `docs/reference.md` is the
+full API reference, for both.
 
-If a change modifies something the README *does* describe (a documented
+**`README.md` stays short and comfortable to read.** It opens with what people
+gain from using Slim UI. Use plain language and short sentences. Keep
+maintenance rules and anything addressed to agents out of it; they belong here.
+It isn't a reference, so don't add API detail to it. If a change makes something
+it says untrue, fix it in the same commit. Its `hello.c` example, snippets and
+commands must keep working, so build and run them after changing anything they
+use. The sizes it quotes come from real builds, so re-measure them when they
+change noticeably.
+
+**Keep `docs/reference.md` current — but only for things it already covers.**
+
+If a change modifies something the reference *does* describe (a documented
 symbol, feature macro, constant, control, event handler, lifecycle
-contract, declarative API behavior, etc.), update the README in the same
+contract, declarative API behavior, etc.), update the reference in the same
 commit so the doc still matches reality.
 
-If a change touches something the README *doesn't* currently mention
+If a change touches something the reference *doesn't* currently mention
 (a new internal helper, a new private control field, a new feature the
-README isn't scoped to cover), **do not silently add it to the README**.
-The README's scope is intentional; do not grow it on the side.
+reference isn't scoped to cover), **do not silently add it to the reference**.
+The reference's scope is intentional; do not grow it on the side.
 
 **Significant additions — ask first.** If the change introduces something
-that would warrant a *new section or category* in the README (e.g. a new
+that would warrant a *new section or category* in the reference (e.g. a new
 public subsystem, a new control kind that doesn't fit existing tables, a
 new feature macro, a new top-level concept), the LLM must surface this
-to the user and explicitly ask whether to add it to the README. Do not
+to the user and explicitly ask whether to add it to the reference. Do not
 assume yes; do not assume no. Surface the question before declaring the
 task complete. Out-of-scope additions otherwise belong in commit
-messages, source comments, or a deliberate follow-up README change.
+messages, source comments, or a deliberate follow-up change to the reference.
 
 In short: keep documented things accurate; don't expand what's
 documented as a side effect of unrelated work; for significant new
 surface, ask the user.
 
-The README is the contract for consumers. Stale docs cause integration
+The reference is the contract for consumers. Stale docs cause integration
 drift; over-eager docs cause API surface creep.
 
 ## Product neutrality
@@ -46,11 +58,14 @@ consumer.
 
 ```
 slim-ui/
-├── README.md                       ← public-facing reference (keep current)
+├── README.md                       ← for people: what it is and how to start
 ├── AGENTS.md                       ← this file
+├── docs/reference.md               ← the full API reference (keep current)
+├── logo.svg, logo.png              ← the logo; the demo embeds the PNG
 ├── CMakeLists.txt                  ← `slim_ui` interface target, demo and tests
 ├── demo/main.cpp                   ← exercises every control; treat as smoke test
 ├── demo/shader_effect.cpp          ← the Shader page's Direct2D effect; each shader_*.hlsl compiles to shader_*_ps.h
+├── examples/tiny.c                 ← the smallest app; the README quotes its size
 ├── dotnet/                         ← C#/.NET wrapper and AOT-capable demo
 ├── tests/
 │   ├── sui_tests.c                 ← utest.h-based regression suite
@@ -98,11 +113,11 @@ When adding a new control type or public function:
 4. If declarative-friendly, add the `sui_<name>` leaf to `sui_decl.h`
    (gated by `SUI_FEATURE_DECL`; consumers without that macro skip the
    declarative API entirely).
-5. Only update the README if the new symbol falls inside something the
-   README already documents (e.g. a new control belongs in the existing
-   factory tables; a new constant fits the constants reference). New
-   *categories* of public surface stay out of the README until that's a
-   deliberate, separately reviewed decision.
+5. Only update the reference if the new symbol falls inside something it
+   already documents (e.g. a new control belongs in the existing factory
+   tables; a new constant fits the constants reference). New *categories*
+   of public surface stay out of it until that's a deliberate, separately
+   reviewed decision.
 6. Add coverage to `demo/main.cpp`.
 
 ## .NET wrapper sync
