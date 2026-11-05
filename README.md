@@ -14,13 +14,6 @@
   <a href="dotnet/README.md">C# / .NET</a>
 </p>
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/demo-dark.png">
-  <img src="docs/demo-light.png" width="720" alt="The demo app, showing checkboxes, radio buttons, drop-down lists and a side menu">
-</picture>
-
-<p align="center"><sub>The Slim UI demo. Light and dark themes are built in.</sub></p>
-
 ## Why Slim UI?
 
 - **Very small apps.** The [label-and-button example](examples/tiny.c) builds to about 61 KB with unused controls and the C runtime removed.
@@ -33,6 +26,13 @@
 - **Sharp on every display.** DirectWrite fits text to the pixel grid. DPI-aware layout and monitor-scale helpers keep the UI sized for the display.
 - **Easy to add.** Drop the headers into a C or C++ project. The [C# / .NET wrapper](dotnet/README.md) handles window setup and events for you.
 - **Keyboard and screen reader support.** Tab navigation, focus rings, Windows UI Automation, and light and dark themes are built in. [Accessibility coverage](docs/reference.md#accessibility-uia) varies by control.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/demo-dark.png">
+  <img src="docs/demo-light.png" width="720" alt="The demo app, showing checkboxes, radio buttons, drop-down lists and a side menu">
+</picture>
+
+<p align="center"><sub>The Slim UI demo. Light and dark themes are built in.</sub></p>
 
 ## Try the demo
 
@@ -213,8 +213,8 @@ See the [API reference](docs/reference.md) for control options, layout and custo
 The same text field can keep its normal editing behavior and gain a glowing border. A custom paint callback changes how it draws. The demo pairs that effect with an animated night sky behind the logo.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/shader-dark.png">
-  <img src="docs/shader-light.png" width="486" alt="The demo's Shader page: the logo on a slow night sky with warm light running along its swoosh, and a text field with color flowing around its border">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/shader-dark.gif">
+  <img src="docs/shader-light.gif" width="486" alt="The demo's Shader page in motion: the logo on a slow night sky with warm light running along its swoosh, and a text field with color flowing around its border">
 </picture>
 
 Adapt the [night sky](demo/shader_dusk.hlsl) or [glow](demo/shader_glow.hlsl) shader, starting with `PaintWithShader` in [`demo/main.cpp`](demo/main.cpp). The demo's [Direct2D effect](demo/shader_effect.cpp) supplies the shader integration.
