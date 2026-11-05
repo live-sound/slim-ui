@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>Build small Windows apps. Make the controls your own.</strong><br>
-  A header-only UI toolkit in C, built on Direct2D and DirectWrite.
+  A header-only UI toolkit in C for Windows 7 and later, built on Direct2D and DirectWrite.
 </p>
 
 <p align="center">
@@ -36,7 +36,7 @@
 
 ## Try the demo
 
-Build the demo on Windows 10 version 1703 or later. You'll need Visual Studio 2022's C++ tools and CMake:
+To build the C/C++ demo, you'll need Visual Studio 2022's C++ tools and CMake:
 
 ```powershell
 git clone https://github.com/live-sound/slim-ui.git
@@ -112,7 +112,7 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)app);
         sui_renderer_init_fields(&app->renderer);
         sui_renderer_init(&app->renderer, hwnd);
-        sui_ctrl_host_init(&app->host, hwnd, &app->renderer, &sui_scheme_light, GetDpiForWindow(hwnd));
+        sui_ctrl_host_init(&app->host, hwnd, &app->renderer, &sui_scheme_light, sui_get_window_dpi(hwnd));
         app->host.on_click = on_click;
         app->host.on_click_data = app;
         return 0;
@@ -148,7 +148,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev, PWSTR args, int show) {
     WNDCLASSW window_class = { .lpfnWndProc = window_proc, .hInstance = instance, .lpszClassName = L"Hello" };
     MSG msg;
 
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    sui_enable_dpi_awareness();
     RegisterClassW(&window_class);
     ShowWindow(CreateWindowExW(0, L"Hello", L"Hello", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                                420, 240, NULL, NULL, instance, &app), show);

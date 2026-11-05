@@ -2,7 +2,7 @@
 
 Every function, control, option and limit. New here? Start with the [README](../README.md).
 
-Pure C, header-only Direct2D + DirectWrite UI toolkit for Windows. No CRT
+Pure C, header-only Direct2D + DirectWrite UI toolkit for Windows 7 or later. No CRT
 required, no third-party deps beyond Windows itself, single-file
 implementation idiom.
 
@@ -59,6 +59,11 @@ Both styles can coexist in the same window.
 Include `slim_ui.h` without `SUI_IMPLEMENTATION` in every other TU that
 needs the types.
 
+Before creating windows, call `sui_enable_dpi_awareness()`. It tries per-monitor
+v2, then per-monitor v1, then system DPI awareness on Windows 7. An awareness
+mode already set by a manifest or the application is preserved.
+Use `sui_get_window_dpi(hwnd)` to read window DPI with a system-DPI fallback.
+
 ```c
 typedef struct App {
     SuiRenderer    renderer;
@@ -73,7 +78,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CREATE:
         a = (App*)((CREATESTRUCTW*)lp)->lpCreateParams;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)a);
-        a->dpi    = GetDpiForWindow(hwnd);
+        a->dpi    = sui_get_window_dpi(hwnd);
         a->scheme = sui_scheme_light;
         sui_renderer_init_fields(&a->renderer);
         sui_renderer_init(&a->renderer, hwnd);

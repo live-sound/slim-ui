@@ -28,7 +28,3 @@ target_link_libraries(sui_demo PRIVATE
     shell32
     windowscodecs
 )
-
-set_target_properties(sui_demo PROPERTIES
-    VS_DPI_AWARE "PerMonitor"
-)

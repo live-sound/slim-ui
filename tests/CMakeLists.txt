@@ -4,6 +4,13 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 enable_testing()
 
+add_executable(sui_dpi_tests sui_dpi_tests.c)
+target_include_directories(sui_dpi_tests PRIVATE ../include .)
+target_compile_definitions(sui_dpi_tests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX)
+target_compile_options(sui_dpi_tests PRIVATE $<$<C_COMPILER_ID:MSVC>:/utf-8>)
+target_link_libraries(sui_dpi_tests PRIVATE d2d1 dwrite user32 gdi32 ole32 windowscodecs)
+add_test(NAME sui_dpi_tests COMMAND sui_dpi_tests)
+
 add_executable(sui_tests sui_tests.c)
 target_include_directories(sui_tests PRIVATE ../include .)
 target_compile_definitions(sui_tests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)

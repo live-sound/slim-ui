@@ -158,17 +158,6 @@ static SuiImageHandle LoadLogoFromResource(SuiRenderer* r) {
     return sui_renderer_load_image(r, p, (size_t)sz);
 }
 
-/* ---- DPI helper ---------------------------------------------------------- */
-static UINT GetDpiForWnd(HWND hwnd) {
-    typedef UINT(WINAPI* Fn)(HWND);
-    static auto fn = (Fn)GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");
-    if (fn && hwnd) return fn(hwnd);
-    HDC dc = GetDC(hwnd);
-    UINT d = (UINT)GetDeviceCaps(dc, LOGPIXELSX);
-    ReleaseDC(hwnd, dc);
-    return d ? d : 96;
-}
-
 /* Snapshot of editable controls. Captured before BuildControls() rebuilds the
  * host, restored after. Without this, every WM_SIZE / scheme change would wipe
  * what the user typed. */
@@ -1255,7 +1244,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         d = (TestbedData*)((CREATESTRUCTW*)lp)->lpCreateParams;
         SetWindowLongPtrW(hwnd, GWLP_USERDATA, (LONG_PTR)d);
 
-        d->dpi    = GetDpiForWnd(hwnd);
+        d->dpi    = sui_get_window_dpi(hwnd);
         d->scheme = sui_scheme_light;
 
         /* Register a custom app-defined scheme alongside the built-ins. */
@@ -1493,7 +1482,7 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 /* ---- Entry --------------------------------------------------------------- */
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE, LPWSTR, int nCmdShow) {
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    sui_enable_dpi_awareness();
 
     WNDCLASSEXW wc = {};
     wc.cbSize        = sizeof(wc);

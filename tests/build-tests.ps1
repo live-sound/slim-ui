@@ -41,7 +41,7 @@ $exeArgs = @()
 if ($List)   { $exeArgs += "--list-tests" }
 if ($Filter) { $exeArgs += "--filter=$Filter" }
 
-foreach ($t in @('sui_tests', 'sui_omit_tests', 'sui_vsync_tests', 'sui_popup_clock_tests')) {
+foreach ($t in @('sui_tests', 'sui_omit_tests', 'sui_dpi_tests', 'sui_vsync_tests', 'sui_popup_clock_tests')) {
     $exe = Join-Path $build "$Configuration\$t.exe"
     Write-Host "[run]     $exe $($exeArgs -join ' ')" -ForegroundColor Cyan
     & $exe @exeArgs

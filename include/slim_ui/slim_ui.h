@@ -986,6 +986,27 @@ static void* sui_malloc(size_t n) { return SUI_MALLOC(n); }
 static void  sui_free(void* p)    { SUI_FREE(p); }
 
 /* ── DPI helper ──────────────────────────────────────────────────────────── */
+/* Call before creating windows. A manifest or host application's choice wins. */
+static void sui_enable_dpi_awareness(void) {
+    typedef BOOL (WINAPI *SetContextFn)(HANDLE);
+    typedef HRESULT (WINAPI *SetAwarenessFn)(int);
+    SetContextFn set_context = (SetContextFn)GetProcAddress(
+        GetModuleHandleW(L"user32.dll"), "SetProcessDpiAwarenessContext");
+    HMODULE shcore;
+    if (set_context) {
+        if (set_context((HANDLE)(INT_PTR)-4)) return; /* Per-monitor v2. */
+        if (GetLastError() == ERROR_ACCESS_DENIED) return;
+    }
+    shcore = LoadLibraryW(L"shcore.dll");
+    if (shcore) {
+        SetAwarenessFn set_awareness = (SetAwarenessFn)GetProcAddress(shcore, "SetProcessDpiAwareness");
+        HRESULT hr = set_awareness ? set_awareness(2) : E_NOTIMPL; /* Per-monitor v1. */
+        FreeLibrary(shcore);
+        if (SUCCEEDED(hr) || hr == E_ACCESSDENIED) return;
+    }
+    SetProcessDPIAware(); /* Windows 7: system DPI. */
+}
+
 static UINT sui_get_window_dpi(HWND hwnd) {
     typedef UINT (WINAPI *Fn)(HWND);
     Fn f = (Fn)GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow");

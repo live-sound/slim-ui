@@ -442,7 +442,7 @@ static bool SuiNetInitializeWindow(SuiNetWindow* window, HWND hwnd) {
     window->com_initialized = SUCCEEDED(co_hr);
     window->hwnd = hwnd;
     window->owner_thread_id = GetCurrentThreadId();
-    window->dpi = GetDpiForWindow(hwnd);
+    window->dpi = sui_get_window_dpi(hwnd);
     SuiNetRegisterDemoThemeParts();
     window->scheme = sui_scheme_find("light");
     if (!window->scheme) window->scheme = &sui_scheme_light;
@@ -601,7 +601,7 @@ SUI_NET_API SuiNetWindow* SUI_NET_CALL sui_net_window_create(
     void* user_data) {
 
     if (!g_dpi_awareness_set) {
-        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+        sui_enable_dpi_awareness();
         g_dpi_awareness_set = true;
     }
     if (!SuiNetRegisterClass()) return NULL;
@@ -612,7 +612,7 @@ SUI_NET_API SuiNetWindow* SUI_NET_CALL sui_net_window_create(
     window->event_callback = event_callback;
     window->user_data = user_data;
 
-    const int dpi = (int)GetDpiForSystem();
+    const int dpi = (int)sui_get_window_dpi(NULL);
 
     HWND hwnd = CreateWindowExW(
         0,

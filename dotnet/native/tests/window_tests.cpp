@@ -23,8 +23,8 @@ UTEST(bridge, initial_size_and_shader_lifecycle) {
 
     RECT bounds = {};
     GetWindowRect(window->hwnd, &bounds);
-    EXPECT_EQ(MulDiv(960, (int)GetDpiForSystem(), 96), bounds.right - bounds.left);
-    EXPECT_EQ(MulDiv(720, (int)GetDpiForSystem(), 96), bounds.bottom - bounds.top);
+    EXPECT_EQ(MulDiv(960, (int)sui_get_window_dpi(NULL), 96), bounds.right - bounds.left);
+    EXPECT_EQ(MulDiv(720, (int)sui_get_window_dpi(NULL), 96), bounds.bottom - bounds.top);
     EXPECT_FALSE(window->shader.running);
 
     state.active = 1;

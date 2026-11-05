@@ -17,7 +17,7 @@ The wrapper is intentionally thin:
 
 ## Requirements
 
-- Windows.
+- A Windows version supported by your .NET runtime.
 - .NET SDK 8 or newer.
 - CMake.
 - MSVC C++ build tools and a Windows SDK.

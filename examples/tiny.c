@@ -65,7 +65,7 @@ static LRESULT CALLBACK window_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
     case WM_CREATE:
         sui_renderer_init_fields(&renderer);
         sui_renderer_init(&renderer, hwnd);
-        sui_ctrl_host_init(&host, hwnd, &renderer, &sui_scheme_light, GetDpiForWindow(hwnd));
+        sui_ctrl_host_init(&host, hwnd, &renderer, &sui_scheme_light, sui_get_window_dpi(hwnd));
         host.on_click = on_click;
         return 0;
     case WM_SIZE:
@@ -101,7 +101,7 @@ void WINAPI WinMainCRTStartup(void) {
     window_class.lpfnWndProc = window_proc;
     window_class.hInstance = GetModuleHandleW(NULL);
     window_class.lpszClassName = L"Hello";
-    SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+    sui_enable_dpi_awareness();
     RegisterClassW(&window_class);
     ShowWindow(CreateWindowExW(0, L"Hello", L"Hello", WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
                                420, 240, NULL, NULL, window_class.hInstance, NULL), SW_SHOWDEFAULT);
