@@ -14,6 +14,8 @@
   <a href="dotnet/README.md">C# / .NET</a>
 </p>
 
+<p align="center">Used by <a href="https://github.com/live-sound/small-installer">Small Installer</a> for its Windows installer wizard.</p>
+
 ## Why Slim UI?
 
 - **Very small apps.** The [label-and-button example](examples/tiny.c) builds to about 61 KB with unused controls and the C runtime removed.
