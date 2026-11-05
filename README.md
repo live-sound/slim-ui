@@ -971,7 +971,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 | Constant                       | Value           | Meaning                                                  |
 |--------------------------------|-----------------|----------------------------------------------------------|
-| `SUI_MAX_CONTROLS`             | 64              | Per-host control array size.                             |
+| `SUI_MAX_CONTROLS`             | 64              | Per-host control array size. To change it, define it before including `slim_ui.h`, the same way in every file that includes it. Each control costs about 1.6 KB. |
 | `SUI_MAX_ITEMS`                | 32              | Per-combobox / per-nav-list item count.                  |
 | `SUI_MAX_CONTAINER_DEPTH`      | 8               | Declarative container stack depth.                       |
 | `SUI_MAX_FLEX_SLOTS`           | 16              | Per-container atom-child slots tracked for two-pass distribute. Overflow children fall back to legacy placement. |

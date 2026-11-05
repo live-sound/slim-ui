@@ -266,7 +266,9 @@ typedef enum SuiCtrlState {
     SUI_CTRL_MEDIUM        = 16384
 } SuiCtrlState;
 
-#define SUI_MAX_CONTROLS         64
+#ifndef SUI_MAX_CONTROLS
+#define SUI_MAX_CONTROLS         64   /* per window; define it the same way in every file that includes this header */
+#endif
 #define SUI_MAX_ITEMS            32
 #define SUI_MAX_CONTAINER_DEPTH  8
 #define SUI_MAX_TAB_TRANSITIONS  8
