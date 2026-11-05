@@ -105,7 +105,7 @@ static int sui_ctrl_tabs_content_rect(const SuiControl* c, SuiRect* out) {
 
 static float sui_ctrl_tabs_content_radius(SuiControlHost* host, const SuiControl* c) {
     (void)c;
-    return 4.0f * sui_ctrl_dpi_scale(host);
+    return 8.0f * sui_ctrl_dpi_scale(host);
 }
 
 static int sui_ctrl_tabs_push_content_clip(SuiControlHost* host, SuiControl* tabs) {
@@ -951,11 +951,10 @@ static void sui_ctrl_draw_tabs_ex(SuiControlHost* host, SuiControl* ctrl,
     SuiRenderer* r = host->renderer;
     const SuiColorScheme* sc = host->scheme;
     float s = sui_ctrl_dpi_scale(host);
-    float rad = 8.0f * s;
+    float rad = sui_ctrl_tabs_content_radius(host, ctrl);
     float tab_h = ctrl->d.tabs.tab_height;
     SuiRect content;
     uint32_t panel_fill = sui_ctrl_style_color(ctrl, SUI_STYLE_BG_COLOR, sc->background);
-    uint32_t content_border_color = sui_ctrl_style_color(ctrl, SUI_STYLE_BORDER_COLOR, sc->btn_area_border);
     uint32_t tab_text_color = sui_ctrl_style_color(ctrl, SUI_STYLE_TEXT_COLOR, sc->text);
     uint32_t indicator_color = sui_ctrl_tabs_indicator_color(host, ctrl);
     const wchar_t* font_family = sui_ctrl_style_font_family(ctrl);
@@ -968,12 +967,9 @@ static void sui_ctrl_draw_tabs_ex(SuiControlHost* host, SuiControl* ctrl,
 
     if (draw_content_panel &&
         sui_ctrl_tabs_content_rect(ctrl, &content) && content.bottom > content.top) {
-        float content_w = content.right - content.left;
-        float content_h = content.bottom - content.top;
-        sui_renderer_fill_rounded_rect(r, content.left, content.top, content_w, content_h,
-                                       rad, panel_fill);
-        sui_renderer_draw_rounded_rect(r, content.left, content.top, content_w, content_h,
-                                       rad, content_border_color, 1.0f);
+        /* Its border comes after its content, from sui_ctrl_tabs_pop_content_clip. */
+        sui_renderer_fill_rounded_rect(r, content.left, content.top, content.right - content.left,
+                                       content.bottom - content.top, rad, panel_fill);
     }
 
     for (i = 0; i < ctrl->d.tabs.item_count; i++) {

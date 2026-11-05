@@ -941,6 +941,61 @@ UTEST_F(host_fx, tabs_indicator_snaps_to_initial_selected_item) {
     sui_ctrl_clear_page(host);
 }
 
+/* The panel's border is one stroke: walking in from its corner along the diagonal crosses one dark band. */
+UTEST_F(host_fx, tabs_panel_corner_has_one_stroke) {
+    enum { size = 160 };
+    SuiControlHost* host = &utest_fixture->host;
+    SuiColorScheme scheme = *host->scheme;
+    SuiRenderer renderer;
+    SuiRect content;
+    BITMAPINFO bi;
+    RECT bounds = { 0, 0, size, size };
+    const unsigned char* bits = NULL;
+    HDC dc = CreateCompatibleDC(NULL);
+    HBITMAP bitmap;
+    int i, idx, strokes = 0, in_stroke = 0;
+
+    memset(&bi, 0, sizeof(bi));
+    bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
+    bi.bmiHeader.biWidth = size;
+    bi.bmiHeader.biHeight = -size;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bitmap = CreateDIBSection(dc, &bi, DIB_RGB_COLORS, (void**)&bits, NULL, 0);
+    ASSERT_TRUE(bitmap != NULL);
+    SelectObject(dc, bitmap);
+    ASSERT_TRUE(sui__popup_renderer_init(&renderer, utest_fixture->hwnd));
+    ASSERT_TRUE(SUCCEEDED(((ID2D1DCRenderTarget*)renderer.render_target)->lpVtbl->BindDC(
+        (ID2D1DCRenderTarget*)renderer.render_target, dc, &bounds)));
+
+    scheme.background = 0xFFFFFF;
+    scheme.btn_area_border = 0x000000;
+    host->scheme = &scheme;
+    host->renderer = &renderer;
+    host->dpi = 384;   /* 1-pixel strokes round large corners: a second curve would stand clear of the first */
+    idx = sui_ctrl_add_tabs(host, 301, 10, 10, 140, 140, 20, 0);
+    ASSERT_TRUE(sui_ctrl_tabs_content_rect(&host->controls[idx], &content));
+    sui_renderer_begin(&renderer);
+    sui_renderer_clear(&renderer, 0xFFFFFF);
+    sui_ctrl_draw_all(host);
+    sui_renderer_end(&renderer);
+    GdiFlush();
+
+    for (i = 0; i < 40; i++) {
+        int dark = bits[(((int)content.top + i) * size + (int)content.left + i) * 4 + 1] < 224;
+        strokes += dark && !in_stroke;
+        in_stroke = dark;
+    }
+
+    sui_ctrl_clear_page(host);
+    host->renderer = &utest_fixture->renderer;
+    host->scheme = sui_scheme_find("light");
+    sui_renderer_release(&renderer);
+    DeleteDC(dc);
+    DeleteObject(bitmap);
+    ASSERT_EQ(1, strokes);
+}
+
 UTEST_F(host_fx, tabs_indicator_resting_width_is_adjustable) {
     SuiControlHost* host = &utest_fixture->host;
     int idx = sui_ctrl_add_tabs(host, 305, 0, 0, 200, 80, 34, 0);
