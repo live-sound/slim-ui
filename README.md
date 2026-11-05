@@ -16,7 +16,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/demo-dark.png">
-  <img src="docs/demo-light.png" alt="The demo app, showing checkboxes, radio buttons, drop-down lists and a side menu">
+  <img src="docs/demo-light.png" width="720" alt="The demo app, showing checkboxes, radio buttons, drop-down lists and a side menu">
 </picture>
 
 <p align="center"><sub>The Slim UI demo. Light and dark themes are built in.</sub></p>
@@ -214,7 +214,7 @@ The same text field can keep its normal editing behavior and gain a glowing bord
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/shader-dark.png">
-  <img src="docs/shader-light.png" alt="The demo's Shader page: the logo on a slow night sky with warm light running along its swoosh, and a text field with color flowing around its border">
+  <img src="docs/shader-light.png" width="486" alt="The demo's Shader page: the logo on a slow night sky with warm light running along its swoosh, and a text field with color flowing around its border">
 </picture>
 
 Adapt the [night sky](demo/shader_dusk.hlsl) or [glow](demo/shader_glow.hlsl) shader, starting with `PaintWithShader` in [`demo/main.cpp`](demo/main.cpp). The demo's [Direct2D effect](demo/shader_effect.cpp) supplies the shader integration.
