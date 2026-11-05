@@ -99,7 +99,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
 
 The complete reference app lives in `demo/main.cpp`. It exercises every
 control across seven sections: Basic, Choices, Text input, Containers, Flex,
-Decl containers, and Shader.
+Decl containers, and Shader. `examples/tiny.c` is the smallest possible app.
 
 ## .NET wrapper
 
@@ -1016,6 +1016,7 @@ slim-ui/
 ├── CMakeLists.txt                     ← the `slim_ui` interface target, the demo and the tests
 ├── demo/main.cpp                      ← reference app, exercises every control
 ├── demo/shader_effect.cpp, shader_*.hlsl ← the demo's pixel shaders
+├── examples/tiny.c                    ← the smallest app
 ├── dotnet/                            ← C#/.NET wrapper, native bridge, AOT-capable sample
 ├── tests/                             ← regression suite (`tests/build-tests.ps1`)
 └── include/slim_ui/
