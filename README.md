@@ -14,7 +14,7 @@
   <a href="dotnet/README.md">C# / .NET</a>
 </p>
 
-<p align="center">Used by <a href="https://github.com/live-sound/small-installer">Small Installer</a> for its Windows installer wizard.</p>
+<p align="center">Used by <a href="https://github.com/live-sound/small-installer">Small Installer</a>.</p>
 
 ## Why Slim UI?
 
