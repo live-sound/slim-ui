@@ -773,8 +773,10 @@ UTEST_F(host_fx, tooltip_text_sits_in_the_middle_of_its_panel) {
     const unsigned char* bits = NULL;
     HDC dc = CreateCompatibleDC(NULL);
     HBITMAP bitmap;
+    SuiTooltipCapital kept;
     int f, t, off_centre = 0, unmeasured = 0;
 
+    memset(&kept, 0, sizeof(kept));
     memset(&bi, 0, sizeof(bi));
     bi.bmiHeader.biSize = sizeof(bi.bmiHeader);
     bi.bmiHeader.biWidth = size;
@@ -795,11 +797,11 @@ UTEST_F(host_fx, tooltip_text_sits_in_the_middle_of_its_panel) {
             int panel_w, panel_h, level, x, y, top = -1, bottom = -1, left = size, right = -1;
 
             if (!sui__tooltip_measure_ink(&renderer, texts[t], 140.0f, text_h, 20, 0, 10.0f, fonts[f], &ink) ||
-                !sui__tooltip_measure_ink(&renderer, L"H", 140.0f, capital_h, 20, 0, 10.0f, fonts[f], &capital)) {
+                !sui__tooltip_measure_ink(&renderer, L"H", 140.0f, capital_h, 20, 0, 10.0f, fonts[f], &capital) ||
+                !sui__tooltip_anchor_to_baseline(&renderer, &kept, texts[t], 140.0f, 20, 0, 10.0f, fonts[f], &ink)) {
                 unmeasured++;
                 continue;
             }
-            sui__tooltip_anchor_to_baseline(&renderer, texts[t], 140.0f, 20, 0, 10.0f, fonts[f], &ink);
             /* The minimums are bigger than a short text's ink, and odd, so both ways of sizing a side are covered. */
             sui__tooltip_fit_ink(&ink, 10, 97, 31, 140.0f, text_h, &panel_w, &panel_h, &text);
             ASSERT_TRUE(SUCCEEDED(((ID2D1DCRenderTarget*)renderer.render_target)->lpVtbl->BindDC(
@@ -834,6 +836,109 @@ UTEST_F(host_fx, tooltip_text_sits_in_the_middle_of_its_panel) {
     DeleteObject(bitmap);
     ASSERT_EQ(0, unmeasured);
     ASSERT_EQ(0, off_centre);
+}
+
+enum { TEST_NO_FONT_DRAWS_THIS = -5000 };
+
+/* Every tooltip in a font shares one drawing of its capital, and any other font gets its own. Marking what's kept with
+ * a value no font gives shows whether it was drawn again: the mark goes if it was. */
+UTEST_F(host_fx, tooltip_draws_a_fonts_capital_once) {
+    SuiRenderer renderer;
+    SuiTooltipCapital capital;
+    RECT ink;
+    static const struct { const wchar_t* family; float size; int bold; } others[] = {
+        { L"Consolas", 12.0f, 0 }, { L"Cambria", 13.0f, 0 }, { L"Cambria", 12.0f, 1 },
+    };
+    int i;
+
+    memset(&capital, 0, sizeof(capital));
+    memset(&ink, 0, sizeof(ink));
+    ASSERT_TRUE(sui__popup_renderer_init(&renderer, utest_fixture->hwnd));
+    ASSERT_TRUE(sui__tooltip_anchor_to_baseline(&renderer, &capital, L"Hello", 140.0f, 20, 0, 12.0f, L"Cambria", &ink));
+    ASSERT_LT(capital.top, capital.bottom);
+    ASSERT_LT(ink.top, ink.bottom);
+
+    capital.top = TEST_NO_FONT_DRAWS_THIS;
+    ASSERT_TRUE(sui__tooltip_anchor_to_baseline(&renderer, &capital, L"Happy days", 90.0f, 20, 0, 12.0f, L"Cambria", &ink));
+    ASSERT_EQ(TEST_NO_FONT_DRAWS_THIS, capital.top);
+
+    for (i = 0; i < (int)(sizeof(others) / sizeof(others[0])); i++) {
+        ASSERT_TRUE(sui__tooltip_anchor_to_baseline(&renderer, &capital, L"Hello", 140.0f, 20, 0, 12.0f, L"Cambria", &ink));
+        capital.top = TEST_NO_FONT_DRAWS_THIS;
+        ASSERT_TRUE(sui__tooltip_anchor_to_baseline(&renderer, &capital, L"Hello", 140.0f, 20, others[i].bold,
+                                                    others[i].size, others[i].family, &ink));
+        ASSERT_NE(TEST_NO_FONT_DRAWS_THIS, capital.top);
+    }
+    sui_renderer_release(&renderer);
+}
+
+static int test_tooltip_measured_again(SuiControlHost* host, SuiControl* ctrl) {
+    int x, y, w, h;
+    SuiRect text;
+    ctrl->tooltip_measure.ink.left = TEST_NO_FONT_DRAWS_THIS;
+    sui__tooltip_calc_rect(host, ctrl, &x, &y, &w, &h, &text);
+    return ctrl->tooltip_measure.ink.left != TEST_NO_FONT_DRAWS_THIS;
+}
+
+/* Showing a tooltip again costs no drawing, and everything that could move its letters measures it afresh. */
+UTEST_F(host_fx, tooltip_keeps_its_measure_until_something_changes_it) {
+    SuiControlHost* host = &utest_fixture->host;
+    int idx = sui_ctrl_add_button(host, 44, 0, 0, 120, 28, L"Help", 0), x, y, w, h, kept_x, kept_y, kept_w, kept_h;
+    SuiControl* ctrl = &host->controls[idx];
+    SuiRect text, kept_text;
+    IDWriteTextFormat* old_format;
+    int kept_across_formats;
+
+    /* The tooltip's own size, so it draws with the formats a show rebuilds. */
+    host->renderer->typography.body.size_pt = 10.0f;
+    sui_ctrl_set_tooltip(host, 44, L"Hold an arrow to keep changing the value.");
+    ASSERT_TRUE(sui__tooltip_ensure_window(host));
+    sui__tooltip_calc_rect(host, ctrl, &x, &y, &w, &h, &text);
+    ASSERT_NE(0u, ctrl->tooltip_measure.key);
+
+    /* What's kept places the panel exactly as measuring did. */
+    sui__tooltip_calc_rect(host, ctrl, &kept_x, &kept_y, &kept_w, &kept_h, &kept_text);
+    ASSERT_TRUE(x == kept_x && y == kept_y && w == kept_w && h == kept_h);
+    ASSERT_EQ(0, memcmp(&text, &kept_text, sizeof(text)));
+    ASSERT_FALSE(test_tooltip_measured_again(host, ctrl));
+
+    /* A show replaces the popup's formats with equal ones, which are still the same font. Holding the old format keeps
+     * its address from being reused, so this can't pass by luck. */
+    old_format = (IDWriteTextFormat*)host->tooltip_renderer.font_normal;
+    old_format->lpVtbl->AddRef(old_format);
+    ASSERT_TRUE(sui__tooltip_ensure_window(host));
+    ASSERT_TRUE(host->tooltip_renderer.font_normal != (void*)old_format);
+    kept_across_formats = !test_tooltip_measured_again(host, ctrl);
+    old_format->lpVtbl->Release(old_format);
+    ASSERT_TRUE(kept_across_formats);
+
+    sui_ctrl_set_tooltip(host, 44, L"Hold an arrow to change the value.");
+    ASSERT_TRUE(test_tooltip_measured_again(host, ctrl));
+    ASSERT_FALSE(test_tooltip_measured_again(host, ctrl));
+
+    ctrl->state |= SUI_CTRL_BOLD;
+    ASSERT_TRUE(test_tooltip_measured_again(host, ctrl));
+    ctrl->state &= ~SUI_CTRL_BOLD;
+
+    sui__wstrncpy_z(host->renderer->typography.body.family, L"Consolas", 64);
+    ASSERT_TRUE(sui__tooltip_ensure_window(host));
+    ASSERT_TRUE(test_tooltip_measured_again(host, ctrl));
+
+    host->renderer->typography.body.italic = 1;
+    ASSERT_TRUE(sui__tooltip_ensure_window(host));
+    ASSERT_TRUE(test_tooltip_measured_again(host, ctrl));
+
+    host->dpi = 192;
+    ASSERT_TRUE(test_tooltip_measured_again(host, ctrl));
+    host->dpi = 96;
+
+    /* Nothing to see in it: the panel falls back to the text's box, and that isn't kept as a measure. */
+    sui_ctrl_set_tooltip(host, 44, L"   ");
+    ASSERT_TRUE(test_tooltip_measured_again(host, ctrl));
+    ASSERT_EQ(0u, ctrl->tooltip_measure.key);
+    ASSERT_TRUE(test_tooltip_measured_again(host, ctrl));
+
+    sui_ctrl_destroy_tooltip_popup(host);
 }
 
 /* Thin fonts never reach black, so what counts as ink follows the text's own darkest pixel. */

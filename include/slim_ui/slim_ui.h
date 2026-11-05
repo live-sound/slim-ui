@@ -340,6 +340,23 @@ typedef int  (*SuiListVirtualRowAtOffsetFn)(SuiControl* ctrl, float offset, floa
 typedef int  (*SuiListVirtualRowForItemFn)(SuiControl* ctrl, int item_index, void* userdata);
 typedef void (*SuiComboVirtualGetItemFn)(SuiControl* ctrl, int item_index, SuiComboItemView* out_item, void* userdata);
 
+/* What measuring a control's tooltip found. Drawing the text is most of what measuring costs, and the answer only
+ * changes with the text, the font or the room there is for it. */
+typedef struct SuiTooltipMeasure {
+    UINT32 key;      /* its text and font; 0 = nothing kept */
+    float  max_w;    /* the widest panel it was measured for, which also moves with the DPI scale */
+    float  wrap_w;   /* the width its text wraps to */
+    float  text_h;
+    RECT   ink;      /* where its letters sit, from the text's top left */
+} SuiTooltipMeasure;
+
+/* Where one font's capitals sit around their baseline, which is the same for every tooltip in that font. */
+typedef struct SuiTooltipCapital {
+    UINT32 font;     /* the font measured; 0 = none yet */
+    int    top;      /* the capital's ink, from its baseline */
+    int    bottom;
+} SuiTooltipCapital;
+
 /* Control descriptor */
 struct SuiControl {
     SuiCtrlType   type;
@@ -366,6 +383,7 @@ struct SuiControl {
     wchar_t       text[SUI_CTRL_TEXT_MAX];
     wchar_t       tooltip_text[SUI_TOOLTIP_TEXT_MAX];
     const wchar_t *tooltip;
+    SuiTooltipMeasure tooltip_measure;
     float          hover_t;  /* 0.0 = rest, 1.0 = fully hovered; driven by SUI_HOVER_TIMER_ID */
     float          right_margin;   /* gap from right edge to c.x+c.w when SUI_CTRL_ANCHOR_RIGHT is set */
     float          bottom_margin;  /* gap from bottom edge to c.y+c.h when SUI_CTRL_ANCHOR_BOTTOM is set */
@@ -843,6 +861,8 @@ typedef struct SuiControlHost {
     HWND  tooltip_hwnd;
     SuiRenderer tooltip_renderer;
     const wchar_t *tooltip_text;
+    /* ponytail: the last font only. A window mixing fonts redraws H once per control, whose measure then stays. */
+    SuiTooltipCapital tooltip_capital;
 
     struct SuiComboPopup *combo_popup;
 

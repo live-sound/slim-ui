@@ -161,22 +161,88 @@ static int sui__tooltip_baselines(SuiRenderer* r, const wchar_t* text, float wra
     return 1;
 }
 
+/* One number for what decides how a format draws. It's read from the format because the same size and family can mean
+ * different fonts: a format comes from the typography, a control's style or the title role, and a typography change
+ * replaces it. Never 0, which means nothing is kept. */
+static UINT32 sui__tooltip_font_key(IDWriteTextFormat* fmt) {
+    wchar_t family[64];
+    float size = fmt->lpVtbl->GetFontSize(fmt);
+    UINT32 size_bits, key;
+
+    if (FAILED(fmt->lpVtbl->GetFontFamilyName(fmt, family, sizeof(family) / sizeof(family[0])))) family[0] = 0;
+    memcpy(&size_bits, &size, sizeof(size_bits));
+    key = (sui__text_hash(family) ^ size_bits) * 16777619u;
+    key = (key ^ (UINT32)fmt->lpVtbl->GetFontWeight(fmt)) * 16777619u;
+    return ((key ^ (UINT32)fmt->lpVtbl->GetFontStyle(fmt)) * 16777619u) | 1u;
+}
+
+/* A rendered H shows where a font's capitals sit, because metrics can miss what a font really draws. Each font is drawn
+ * once: it costs as much as drawing a whole tooltip's text. Returns 0 when it can't tell. */
+static int sui__tooltip_measure_capital(SuiRenderer* r, SuiTooltipCapital* capital, float wrap_w, int slack, int bold,
+                                        float font_size, const wchar_t* font_family) {
+    const wchar_t* letter = L"H";
+    IDWriteTextFormat* fmt = sui__resolve_text_fmt_ex(r, bold, font_size, font_family, NULL);
+    UINT32 font;
+    float letter_h;
+    int baseline, unused;
+    RECT ink;
+
+    if (!fmt) return 0;
+    font = sui__tooltip_font_key(fmt);
+    if (capital->font == font) return 1;
+    letter_h = sui_renderer_measure_text_height_ex(r, letter, wrap_w, bold, font_size, font_family);
+    if (!sui__tooltip_baselines(r, letter, wrap_w, bold, font_size, font_family, &baseline, &unused) ||
+        !sui__tooltip_measure_ink(r, letter, wrap_w, letter_h, slack, bold, font_size, font_family, &ink))
+        return 0;
+    capital->font = font;
+    capital->top = ink.top - baseline;
+    capital->bottom = ink.bottom - baseline;
+    return 1;
+}
+
 /* Text looks centred when the tops of its capitals and its baseline are. Descenders hang below that, and counting them
- * would lift the letters. A rendered H gives both, because metrics can miss what a font really draws. The ink stays as
- * it is when this can't tell. */
-static void sui__tooltip_anchor_to_baseline(SuiRenderer* r, const wchar_t* text, float wrap_w, int slack, int bold,
-                                            float font_size, const wchar_t* font_family, RECT* ink) {
-    const wchar_t* capital = L"H";
-    float capital_h = sui_renderer_measure_text_height_ex(r, capital, wrap_w, bold, font_size, font_family);
-    int first, last, capital_baseline, unused;
-    RECT capital_ink;
+ * would lift the letters. Returns 0, with the ink as it was, when it can't tell. */
+static int sui__tooltip_anchor_to_baseline(SuiRenderer* r, SuiTooltipCapital* capital, const wchar_t* text, float wrap_w,
+                                           int slack, int bold, float font_size, const wchar_t* font_family, RECT* ink) {
+    int first, last;
 
     if (!sui__tooltip_baselines(r, text, wrap_w, bold, font_size, font_family, &first, &last) ||
-        !sui__tooltip_baselines(r, capital, wrap_w, bold, font_size, font_family, &capital_baseline, &unused) ||
-        !sui__tooltip_measure_ink(r, capital, wrap_w, capital_h, slack, bold, font_size, font_family, &capital_ink))
-        return;
-    ink->top = capital_ink.top + first - capital_baseline;
-    ink->bottom = capital_ink.bottom + last - capital_baseline;
+        !sui__tooltip_measure_capital(r, capital, wrap_w, slack, bold, font_size, font_family))
+        return 0;
+    ink->top = capital->top + first;
+    ink->bottom = capital->bottom + last;
+    return 1;
+}
+
+/* Fills ctrl->tooltip_measure, unless it already holds this text in this font and this much room. Only a measure that
+ * worked is kept: the fallback used here stays for this show alone. */
+static void sui__tooltip_measure_text(SuiControlHost* host, SuiControl* ctrl, float s, float pad_x, float min_w, float max_w,
+                                      int bold, float font_size, const wchar_t* font_family) {
+    SuiRenderer* r = &host->tooltip_renderer;
+    SuiTooltipMeasure* m = &ctrl->tooltip_measure;
+    IDWriteTextFormat* fmt = sui__resolve_text_fmt_ex(r, bold, font_size, font_family, NULL);
+    UINT32 key = fmt ? (sui__tooltip_font_key(fmt) ^ sui__text_hash(ctrl->tooltip)) | 1u : 0;
+    int slack = (int)(pad_x + 0.5f) * 2, found;
+    float tip_w;
+
+    if (key && m->key == key && m->max_w == max_w) return;
+
+    tip_w = sui_renderer_measure_text_width_ex(r, ctrl->tooltip, bold, font_size, font_family) + pad_x * 2.0f;
+    if (tip_w < min_w) tip_w = min_w;
+    if (tip_w > max_w) tip_w = max_w;
+    m->wrap_w = tip_w - pad_x * 2.0f;
+    if (m->wrap_w < 16.0f * s) m->wrap_w = 16.0f * s;
+
+    m->text_h = sui_renderer_measure_text_height_ex(r, ctrl->tooltip, m->wrap_w, bold, font_size, font_family);
+    if (m->text_h <= 0.0f) m->text_h = 18.0f * s;
+
+    m->key = 0;
+    m->max_w = max_w;
+    found = sui__tooltip_measure_ink(r, ctrl->tooltip, m->wrap_w, m->text_h, slack, bold, font_size, font_family, &m->ink);
+    if (!found) SetRect(&m->ink, 0, 0, (int)m->wrap_w, (int)m->text_h);
+    if (sui__tooltip_anchor_to_baseline(r, &host->tooltip_capital, ctrl->tooltip, m->wrap_w, slack, bold, font_size,
+                                        font_family, &m->ink) && found)
+        m->key = key;
 }
 
 /* One side of the panel: padding at both ends of the ink, or the minimum, grown a pixel if the room around the ink
@@ -424,14 +490,14 @@ static void sui_ctrl_destroy_tooltip_popup(SuiControlHost* host) {
 
 static void sui__tooltip_calc_rect(SuiControlHost* host, SuiControl* ctrl,
                                    int* out_x, int* out_y, int* out_w, int* out_h, SuiRect* out_text) {
-    SuiRenderer* r = &host->tooltip_renderer;
-    RECT work, ink;
+    const SuiTooltipMeasure* measured = &ctrl->tooltip_measure;
+    RECT work;
     HMONITOR mon;
     MONITORINFO mi;
     POINT anchor;
     POINT left_anchor;
     float s, pad_x, gap, margin, font_size, anchor_w, anchor_font_size, anchor_text_w;
-    float work_w, max_w, min_w, text_w, text_h, tip_w, text_area_w;
+    float work_w, max_w, min_w;
     int pad, panel_x, panel_y, panel_w, panel_h, shadow_margin;
     int x, y, w, h;
     const wchar_t* font_family;
@@ -458,21 +524,9 @@ static void sui__tooltip_calc_rect(SuiControlHost* host, SuiControl* ctrl,
     if (max_w < min_w) min_w = max_w;
     if (min_w < 48.0f * s) min_w = 48.0f * s;
 
-    text_w = sui_renderer_measure_text_width_ex(r, ctrl->tooltip, bold, font_size, font_family);
-    tip_w = text_w + pad_x * 2.0f;
-    if (tip_w < min_w) tip_w = min_w;
-    if (tip_w > max_w) tip_w = max_w;
-    text_area_w = tip_w - pad_x * 2.0f;
-    if (text_area_w < 16.0f * s) text_area_w = 16.0f * s;
-
-    text_h = sui_renderer_measure_text_height_ex(r, ctrl->tooltip, text_area_w, bold, font_size, font_family);
-    if (text_h <= 0.0f) text_h = 18.0f * s;
-
+    sui__tooltip_measure_text(host, ctrl, s, pad_x, min_w, max_w, bold, font_size, font_family);
     pad = (int)(pad_x + 0.5f);
-    if (!sui__tooltip_measure_ink(r, ctrl->tooltip, text_area_w, text_h, pad * 2, bold, font_size, font_family, &ink))
-        SetRect(&ink, 0, 0, (int)text_area_w, (int)text_h);
-    sui__tooltip_anchor_to_baseline(r, ctrl->tooltip, text_area_w, pad * 2, bold, font_size, font_family, &ink);
-    sui__tooltip_fit_ink(&ink, pad, (int)(min_w + 0.5f), (int)(30.0f * s + 0.5f), text_area_w, text_h,
+    sui__tooltip_fit_ink(&measured->ink, pad, (int)(min_w + 0.5f), (int)(30.0f * s + 0.5f), measured->wrap_w, measured->text_h,
                          &panel_w, &panel_h, out_text);
     shadow_margin = (int)(SUI_TOOLTIP_SHADOW_MARGIN_DIP * s + 0.5f);
     if (shadow_margin < 1) shadow_margin = 1;

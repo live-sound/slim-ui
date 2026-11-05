@@ -422,8 +422,12 @@ typedef struct {
     void *GetTextAlignment, *GetParagraphAlignment, *GetWordWrapping;
     void *GetReadingDirection, *GetFlowDirection, *GetIncrementalTabStop;
     void *GetTrimming, *GetLineSpacing, *GetFontCollection;
-    void *GetFontFamilyNameLength, *GetFontFamilyName;
-    void *GetFontWeight, *GetFontStyle, *GetFontStretch, *GetFontSize;
+    void *GetFontFamilyNameLength;
+    HRESULT (STDMETHODCALLTYPE *GetFontFamilyName)(IDWriteTextFormat*, WCHAR*, UINT32);
+    int (STDMETHODCALLTYPE *GetFontWeight)(IDWriteTextFormat*);
+    int (STDMETHODCALLTYPE *GetFontStyle)(IDWriteTextFormat*);
+    void *GetFontStretch;
+    float (STDMETHODCALLTYPE *GetFontSize)(IDWriteTextFormat*);
     void *GetLocaleNameLength, *GetLocaleName;
 } IDWriteTextFormatVtbl;
 struct IDWriteTextFormat { const IDWriteTextFormatVtbl* lpVtbl; };
