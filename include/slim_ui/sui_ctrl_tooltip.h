@@ -139,6 +139,46 @@ static int sui__tooltip_measure_ink(SuiRenderer* r, const wchar_t* text, float w
     return found;
 }
 
+/* How far down the text its first and last baselines sit. They come from the layout because a fallback font can move
+ * them. Returns 0 when it can't tell, or for more lines than any tooltip should have. */
+static int sui__tooltip_baselines(SuiRenderer* r, const wchar_t* text, float wrap_w, int bold, float font_size,
+                                  const wchar_t* font_family, int* first, int* last) {
+    DWRITE_LINE_METRICS lines[64];
+    IDWriteFactory* dw = (IDWriteFactory*)r->dwrite_factory;
+    IDWriteTextFormat* fmt = sui__resolve_text_fmt_ex(r, bold, font_size, font_family, NULL);
+    IDWriteTextLayout* layout;
+    UINT32 count = 0, i;
+    float above = 0.0f;
+    HRESULT hr;
+
+    if (!dw || !fmt || FAILED(sui__text_layout(dw, text, (UINT32)wcslen(text), fmt, wrap_w, 10000.0f, &layout))) return 0;
+    hr = layout->lpVtbl->GetLineMetrics(layout, lines, sizeof(lines) / sizeof(lines[0]), &count);
+    layout->lpVtbl->Release(layout);
+    if (FAILED(hr) || !count) return 0;
+    for (i = 0; i + 1 < count; i++) above += lines[i].height;
+    *first = (int)(lines[0].baseline + 0.5f);
+    *last = (int)(above + lines[count - 1].baseline + 0.5f);
+    return 1;
+}
+
+/* Text looks centred when the tops of its capitals and its baseline are. Descenders hang below that, and counting them
+ * would lift the letters. A rendered H gives both, because metrics can miss what a font really draws. The ink stays as
+ * it is when this can't tell. */
+static void sui__tooltip_anchor_to_baseline(SuiRenderer* r, const wchar_t* text, float wrap_w, int slack, int bold,
+                                            float font_size, const wchar_t* font_family, RECT* ink) {
+    const wchar_t* capital = L"H";
+    float capital_h = sui_renderer_measure_text_height_ex(r, capital, wrap_w, bold, font_size, font_family);
+    int first, last, capital_baseline, unused;
+    RECT capital_ink;
+
+    if (!sui__tooltip_baselines(r, text, wrap_w, bold, font_size, font_family, &first, &last) ||
+        !sui__tooltip_baselines(r, capital, wrap_w, bold, font_size, font_family, &capital_baseline, &unused) ||
+        !sui__tooltip_measure_ink(r, capital, wrap_w, capital_h, slack, bold, font_size, font_family, &capital_ink))
+        return;
+    ink->top = capital_ink.top + first - capital_baseline;
+    ink->bottom = capital_ink.bottom + last - capital_baseline;
+}
+
 /* One side of the panel: padding at both ends of the ink, or the minimum, grown a pixel if the room around the ink
  * wouldn't otherwise halve into whole pixels. */
 static int sui__tooltip_panel_side(int ink, int pad, int minimum) {
@@ -431,6 +471,7 @@ static void sui__tooltip_calc_rect(SuiControlHost* host, SuiControl* ctrl,
     pad = (int)(pad_x + 0.5f);
     if (!sui__tooltip_measure_ink(r, ctrl->tooltip, text_area_w, text_h, pad * 2, bold, font_size, font_family, &ink))
         SetRect(&ink, 0, 0, (int)text_area_w, (int)text_h);
+    sui__tooltip_anchor_to_baseline(r, ctrl->tooltip, text_area_w, pad * 2, bold, font_size, font_family, &ink);
     sui__tooltip_fit_ink(&ink, pad, (int)(min_w + 0.5f), (int)(30.0f * s + 0.5f), text_area_w, text_h,
                          &panel_w, &panel_h, out_text);
     shadow_margin = (int)(SUI_TOOLTIP_SHADOW_MARGIN_DIP * s + 0.5f);

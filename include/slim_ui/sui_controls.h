@@ -1721,6 +1721,10 @@ static void sui_ctrl_on_lbutton_dblclk(SuiControlHost* host, int mx, int my) {
         sui_ctrl_set_focus(host, hit);
         sui_ctrl_textview_on_lbutton_dblclk(host, hit, mx, my);
         InvalidateRect(host->hwnd, NULL, FALSE);
+    } else if (host->controls[hit].type != SUI_CTRL_SHORTCUT_RECORDER) {
+        /* Only text has a double click of its own, so to anything else this is one more click. Not to a recorder: its first click
+         * started recording, and this one would become the shortcut. */
+        sui_ctrl_on_lbutton_down(host, mx, my);
     }
 }
 

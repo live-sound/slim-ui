@@ -677,6 +677,44 @@ UTEST_F(host_fx, spinner_second_click_can_repeat_but_text_edit_does_not) {
     sui_ctrl_on_lbutton_up(host, 20, 10);
 }
 
+/* Windows reports a quick second click as a double click. Only text has a meaning for that, so other controls still get their click. */
+UTEST_F(host_fx, a_quick_second_click_still_counts) {
+    SuiControlHost* host = &utest_fixture->host;
+    int clicks = 0;
+    int box = sui_ctrl_add_checkbox(host, 1, 0, 0, 100, 20, L"Box", 0);
+    sui_ctrl_add_button(host, 2, 0, 30, 100, 20, L"Button", 0);
+    host->on_click = test_spinner_changed;
+    host->on_click_data = &clicks;
+
+    sui_ctrl_on_lbutton_down(host, 5, 5);
+    sui_ctrl_on_lbutton_up(host, 5, 5);
+    ASSERT_TRUE(host->controls[box].state & SUI_CTRL_CHECKED);
+    sui_ctrl_on_lbutton_dblclk(host, 5, 5);
+    sui_ctrl_on_lbutton_up(host, 5, 5);
+    ASSERT_FALSE(host->controls[box].state & SUI_CTRL_CHECKED);
+    ASSERT_EQ(2, clicks);
+
+    sui_ctrl_on_lbutton_down(host, 5, 35);
+    sui_ctrl_on_lbutton_up(host, 5, 35);
+    sui_ctrl_on_lbutton_dblclk(host, 5, 35);
+    sui_ctrl_on_lbutton_up(host, 5, 35);
+    ASSERT_EQ(4, clicks);
+}
+
+/* The first click starts a recorder, so a double click's second one must not become the shortcut. */
+UTEST_F(host_fx, a_double_click_starts_a_recorder_without_recording_itself) {
+    SuiControlHost* host = &utest_fixture->host;
+    int idx = sui_ctrl_add_shortcut_recorder_keyboard(host, 1, 0, 0, 160, 28, 'A', 0, L"Press a key...");
+    sui_ctrl_on_lbutton_down(host, 5, 5);
+    sui_ctrl_on_lbutton_up(host, 5, 5);
+    ASSERT_TRUE(host->controls[idx].d.shortcut.recording);
+    sui_ctrl_on_lbutton_dblclk(host, 5, 5);
+    sui_ctrl_on_lbutton_up(host, 5, 5);
+    ASSERT_TRUE(host->controls[idx].d.shortcut.recording);
+    ASSERT_EQ((UINT)SUI_SHORTCUT_MOUSE_NONE, host->controls[idx].d.shortcut.candidate_mouse_button);
+    sui_ctrl_shortcut_cancel_recording(host, &host->controls[idx], 1);
+}
+
 UTEST_F(host_fx, spinner_repeat_uses_no_toolkit_allocations_after_preparation) {
     SuiControlHost* host = &utest_fixture->host;
     size_t allocations;
@@ -721,12 +759,14 @@ UTEST_F(host_fx, tooltip_timer_shows_without_further_mouse_movement_and_leave_hi
     ASSERT_TRUE(hidden);
 }
 
-/* A tooltip's ink sits in the middle of its panel on both axes, whatever the font. MS Gothic is here because its
- * embedded bitmaps don't match its outline metrics. */
-UTEST_F(host_fx, tooltip_ink_sits_in_the_middle_of_its_panel) {
+/* A tooltip's text sits in the middle of its panel whatever the font: across by its ink, and down by the tops of its
+ * capitals and its baseline, with descenders hanging below. Every line starts with an H, whose own pixels show both.
+ * MS Gothic is here because its embedded bitmaps don't match its outline metrics, and the Japanese because a fallback
+ * font moves the baseline. */
+UTEST_F(host_fx, tooltip_text_sits_in_the_middle_of_its_panel) {
     enum { size = 240 };
     static const wchar_t* const fonts[] = { NULL, L"Cambria", L"Consolas", L"Comic Sans MS", L"MS Gothic", L"Segoe UI Variable Text" };
-    static const wchar_t* const texts[] = { L"Hello", L"Typography", L"HOLD", L"some", L"Two lines\nof text", L"\x65E5\x672C\x8A9E" };
+    static const wchar_t* const texts[] = { L"Hello", L"Happy", L"HOLD", L"Hay\nHappy", L"H\x65E5\x672C\x8A9E" };
     SuiRenderer renderer;
     BITMAPINFO bi;
     RECT bounds = { 0, 0, size, size };
@@ -749,14 +789,17 @@ UTEST_F(host_fx, tooltip_ink_sits_in_the_middle_of_its_panel) {
     for (f = 0; f < (int)(sizeof(fonts) / sizeof(fonts[0])); f++) {
         for (t = 0; t < (int)(sizeof(texts) / sizeof(texts[0])); t++) {
             float text_h = sui_renderer_measure_text_height_ex(&renderer, texts[t], 140.0f, 0, 10.0f, fonts[f]);
-            RECT ink;
+            float capital_h = sui_renderer_measure_text_height_ex(&renderer, L"H", 140.0f, 0, 10.0f, fonts[f]);
+            RECT ink, capital;
             SuiRect text;
             int panel_w, panel_h, level, x, y, top = -1, bottom = -1, left = size, right = -1;
 
-            if (!sui__tooltip_measure_ink(&renderer, texts[t], 140.0f, text_h, 20, 0, 10.0f, fonts[f], &ink)) {
+            if (!sui__tooltip_measure_ink(&renderer, texts[t], 140.0f, text_h, 20, 0, 10.0f, fonts[f], &ink) ||
+                !sui__tooltip_measure_ink(&renderer, L"H", 140.0f, capital_h, 20, 0, 10.0f, fonts[f], &capital)) {
                 unmeasured++;
                 continue;
             }
+            sui__tooltip_anchor_to_baseline(&renderer, texts[t], 140.0f, 20, 0, 10.0f, fonts[f], &ink);
             /* The minimums are bigger than a short text's ink, and odd, so both ways of sizing a side are covered. */
             sui__tooltip_fit_ink(&ink, 10, 97, 31, 140.0f, text_h, &panel_w, &panel_h, &text);
             ASSERT_TRUE(SUCCEEDED(((ID2D1DCRenderTarget*)renderer.render_target)->lpVtbl->BindDC(
@@ -771,10 +814,15 @@ UTEST_F(host_fx, tooltip_ink_sits_in_the_middle_of_its_panel) {
             for (y = 0; y < size; y++) {
                 for (x = 0; x < size; x++) {
                     if (bits[(y * size + x) * 4 + 1] >= level) continue;
-                    if (top < 0) top = y;
-                    bottom = y;
                     if (x < left) left = x;
                     if (x > right) right = x;
+                }
+            }
+            for (y = 0; y < size; y++) {
+                for (x = left; x < left + capital.right - capital.left; x++) {
+                    if (bits[(y * size + x) * 4 + 1] >= level) continue;
+                    if (top < 0) top = y;
+                    bottom = y;
                 }
             }
             off_centre += top != panel_h - 1 - bottom || left != panel_w - 1 - right;

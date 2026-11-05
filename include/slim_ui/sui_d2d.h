@@ -491,6 +491,13 @@ typedef struct DWRITE_TEXT_METRICS {
     UINT32 lineCount;
 } DWRITE_TEXT_METRICS;
 
+/* One line's entry from GetLineMetrics */
+typedef struct DWRITE_LINE_METRICS {
+    UINT32 length, trailingWhitespaceLength, newlineLength;
+    float height, baseline;
+    BOOL isTrimmed;
+} DWRITE_LINE_METRICS;
+
 /* IDWriteFactory vtable (flat: IUnknown[3] + Factory[21] = 24) */
 typedef struct {
     HRESULT (STDMETHODCALLTYPE *QueryInterface)(IDWriteFactory*, REFIID, void**);

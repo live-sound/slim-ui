@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-enum { DEMO_SHADER_RIPPLE, DEMO_SHADER_GLOW, DEMO_SHADER_KINDS };
+enum { DEMO_SHADER_DUSK, DEMO_SHADER_GLOW, DEMO_SHADER_KINDS };
 
 typedef struct DemoShader DemoShader;
 

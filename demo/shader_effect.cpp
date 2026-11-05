@@ -1,4 +1,4 @@
-/* Runs shader_ripple.hlsl and shader_glow.hlsl as a Direct2D custom effect, with a control's own pixels as the input image. */
+/* Runs shader_dusk.hlsl and shader_glow.hlsl as a Direct2D custom effect, with a control's own pixels as the input image. */
 #include "shader_effect.h"
 
 #include <d2d1_1.h>
@@ -7,20 +7,17 @@
 #include <d2d1effecthelpers.h>
 #include <new>
 
+#include "shader_dusk_ps.h"
 #include "shader_glow_ps.h"
-#include "shader_ripple_ps.h"
 
 namespace {
 
 // {8C9D2A5E-3F7B-4C1E-9A6D-5B2E7F1C4D30}
 constexpr GUID kEffectId = {0x8c9d2a5e, 0x3f7b, 0x4c1e, {0x9a, 0x6d, 0x5b, 0x2e, 0x7f, 0x1c, 0x4d, 0x30}};
 // {2E6F4B1A-7D3C-4A58-B1E9-6C0D8A3F5E72}
-constexpr GUID kRippleId = {0x2e6f4b1a, 0x7d3c, 0x4a58, {0xb1, 0xe9, 0x6c, 0x0d, 0x8a, 0x3f, 0x5e, 0x72}};
+constexpr GUID kDuskId = {0x2e6f4b1a, 0x7d3c, 0x4a58, {0xb1, 0xe9, 0x6c, 0x0d, 0x8a, 0x3f, 0x5e, 0x72}};
 // {A17C3E90-52D4-4F6B-8E21-0B9D6F4C7A15}
 constexpr GUID kGlowId = {0xa17c3e90, 0x52d4, 0x4f6b, {0x8e, 0x21, 0x0b, 0x9d, 0x6f, 0x4c, 0x7a, 0x15}};
-
-// The furthest shader_ripple.hlsl looks away from a pixel.
-constexpr LONG kReach = 8;
 
 constexpr wchar_t kEffectXml[] =
     L"<?xml version='1.0'?>"
@@ -62,12 +59,12 @@ public:
 
     // ID2D1EffectImpl
     IFACEMETHODIMP Initialize(ID2D1EffectContext* context, ID2D1TransformGraph* graph) override {
-        HRESULT hr = context->LoadPixelShader(kRippleId, kRippleBytes, sizeof(kRippleBytes));
+        HRESULT hr = context->LoadPixelShader(kDuskId, kDuskBytes, sizeof(kDuskBytes));
         if (SUCCEEDED(hr)) hr = context->LoadPixelShader(kGlowId, kGlowBytes, sizeof(kGlowBytes));
         return SUCCEEDED(hr) ? graph->SetSingleTransformNode(this) : hr;
     }
     IFACEMETHODIMP PrepareForRender(D2D1_CHANGE_TYPE) override {
-        HRESULT hr = info_->SetPixelShader(kind_ == DEMO_SHADER_GLOW ? kGlowId : kRippleId);
+        HRESULT hr = info_->SetPixelShader(kind_ == DEMO_SHADER_GLOW ? kGlowId : kDuskId);
         return SUCCEEDED(hr) ? info_->SetPixelShaderConstantBuffer(reinterpret_cast<const BYTE*>(&constants_), sizeof(constants_)) : hr;
     }
     IFACEMETHODIMP SetGraph(ID2D1TransformGraph*) override { return E_NOTIMPL; }
@@ -75,13 +72,13 @@ public:
     // ID2D1DrawTransform
     IFACEMETHODIMP SetDrawInfo(ID2D1DrawInfo* info) override {
         info_ = info;
-        return info_->SetPixelShader(kRippleId);
+        return info_->SetPixelShader(kDuskId);
     }
 
-    // ID2D1Transform: a shader's output is the size of its input, and it may look a little way past the pixel it's working on.
+    // ID2D1Transform: a shader's output is the size of its input, and each pixel only needs the same pixel going in.
     IFACEMETHODIMP MapOutputRectToInputRects(const D2D1_RECT_L* output, D2D1_RECT_L* inputs, UINT32 count) const override {
         if (count != 1) return E_INVALIDARG;
-        inputs[0] = {output->left - kReach, output->top - kReach, output->right + kReach, output->bottom + kReach};
+        inputs[0] = *output;
         return S_OK;
     }
     IFACEMETHODIMP MapInputRectsToOutputRect(const D2D1_RECT_L* inputs, const D2D1_RECT_L*, UINT32 count, D2D1_RECT_L* output, D2D1_RECT_L* opaque) override {
@@ -120,7 +117,7 @@ private:
     ID2D1DrawInfo* info_ = nullptr;  // owned by the effect, and valid for its whole life
     D2D_VECTOR_4F  constants_ = {0.0f, 1.0f, 1.0f, 0.0f};
     D2D1_RECT_L    area_ = {0, 0, 0, 0};
-    INT32          kind_ = DEMO_SHADER_RIPPLE;
+    INT32          kind_ = DEMO_SHADER_DUSK;
     ULONG          references_ = 1;
 };
 

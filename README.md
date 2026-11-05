@@ -1,39 +1,50 @@
 <p align="center">
-  <img src="logo.svg" alt="Slim UI" width="276">
+  <img src="logo.svg" alt="Slim UI" width="460">
 </p>
 
-Slim UI is a UI toolkit for Windows apps, written in C. Here's what it gives you:
+<p align="center">
+  <strong>Small Windows apps. Sharp text. Smooth controls.</strong><br>
+  A header-only UI toolkit in C, built on Direct2D and DirectWrite.
+</p>
 
-- **Very small apps.** A Hello World window can be as small as 60 KB. The demo, with every control in it, is about 360 KB.
-- **One file to ship.** Link statically and your app is a single `.exe` with no extra DLLs. All it loads are libraries that already come with Windows.
-- **Customize anything.** Set colors and fonts for the whole app or for a single control. If you need a control to work differently, change it. Slim UI is open source and each control is one small file of plain C (the slider is about 120 lines), so you or an LLM can rewrite it or build your own version.
-- **Smooth animation.** Hover effects, tab switches and drop-down lists move in step with your display's refresh rate (vsync), so a 120 Hz screen gets 120 frames a second. When nothing is moving, the animation clock sleeps.
-- **GPU effects.** Run your own animated pixel shaders on any control.
-- **Sharp on every display.** Everything is drawn with Direct2D at the display's own scale, and text is fitted to the pixel grid so it stays crisp.
-- **Nothing to install.** Add one folder of header files to your project. It works from C, C++ and C#.
-- **Ready for everyone.** Keyboard navigation, screen reader support, and light and dark themes are built in.
+<p align="center">
+  <a href="#try-the-demo">Try the demo</a> ·
+  <a href="#your-first-window">Build a window</a> ·
+  <a href="docs/reference.md">API reference</a> ·
+  <a href="dotnet/README.md">C# / .NET</a>
+</p>
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/demo-dark.png">
   <img src="docs/demo-light.png" alt="The demo app, showing checkboxes, radio buttons, drop-down lists and a side menu">
 </picture>
 
-## What's included
+<p align="center"><sub>The Slim UI demo. Light and dark themes are built in.</sub></p>
 
-| Kind | Controls |
-|---|---|
-| Actions | Buttons |
-| Choices | Checkboxes, radio buttons, drop-down lists, sliders, number spinners, color swatches |
-| Text | Labels, text fields and multi-line text views, with undo and redo |
-| Lists and menus | Lists, tabs, side menus |
-| Layout | Containers, scrolling areas |
-| Extras | Images, progress bars, tooltips, keyboard and gamepad shortcut recorders |
+## Why Slim UI?
 
-Slim UI runs on Windows only. A window holds up to 64 controls by default. To raise that, define `SUI_MAX_CONTROLS` before including the header, the same way in every file that includes it. Each extra control costs about 1.6 KB of memory.
+- **Very small apps.** A label-and-button app can be about 61 KB. Leave out unused controls and, for the smallest builds, the C runtime.
+- **One file to ship.** C and C++ apps can ship as a single `.exe`. Link the C runtime statically; the remaining libraries come with Windows.
+- **Customize anything.** Set colors and fonts globally or per control. Controls live in separate C headers—the slider is about 120 lines—so you can modify them or build your own, with or without an LLM.
+- **Lists that fetch data as needed.** Virtualized lists and drop-downs request items from your data through callbacks, without copying the entire collection into controls.
+- **Layout your way.** Use automatic rows, columns and wrapping flows, flexible sizing and scrolling containers—or place controls at exact pixel positions. Automatic layouts scale with DPI.
+- **Smooth animation.** Enable vsync for hover fades, tab transitions and drop-down animations paced to your display. Windows and popups share a clock that sleeps when no animation needs it.
+- **GPU effects.** Add your own drawing or animated pixel shaders to any control. Its input, focus and click handling stay intact.
+- **Sharp on every display.** DirectWrite fits text to the pixel grid. Automatic layout scales with DPI, and helpers handle monitor-scale changes.
+- **Easy to add.** Use a folder of headers from C or C++, with no toolkit binary to install. The [C# / .NET wrapper](dotnet/README.md) handles window setup and events for you.
+- **Keyboard and screen reader support.** Tab navigation, focus rings and Windows UI Automation are built in, alongside light and dark themes. Supported accessibility actions vary by control; see the [accessibility reference](docs/reference.md#accessibility-uia).
+
+## Why not Win32 controls or WinUI?
+
+The stock [Win32 controls](https://learn.microsoft.com/en-us/windows/win32/controls/window-controls) look dated, and modernizing their appearance takes work. [WinUI 3](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/) supplies modern Fluent controls with extensive [style and template customization](https://learn.microsoft.com/en-us/windows/apps/develop/platform/xaml/xaml-control-templates), but adds a Windows App SDK runtime dependency that must be [deployed separately or bundled with your app](https://learn.microsoft.com/en-us/windows/apps/package-and-deploy/deploy-overview).
+
+**Slim UI makes a control's actual behavior easy to change.** Its implementations live in C headers you compile into your app. For example, the [slider header](include/slim_ui/sui_ctrl_slider.h) contains its drawing, mouse-to-value calculation and keyboard handling. To change how it snaps or how far an arrow key moves it, edit that code and rebuild your app. You can follow the implementation directly and change the rule you care about.
+
+Light and dark themes, animation and layouts written in code come with it. Drawing uses Direct2D and DirectWrite already provided by Windows, so C/C++ apps need no separate toolkit runtime.
 
 ## Try the demo
 
-You need Visual Studio 2022 with the C++ tools, and CMake.
+On Windows 10 version 1703 or later, with Visual Studio 2022's C++ tools and CMake installed:
 
 ```powershell
 git clone https://github.com/live-sound/slim-ui.git
@@ -42,9 +53,60 @@ cd slim-ui\demo
 .\build\Release\sui_demo.exe
 ```
 
+Explore the controls, switch themes and fonts, and try the animated Shader page.
+
+## How it fits together
+
+For a C or C++ app, Slim UI compiles into your executable. Your app owns its data; the host keeps the controls, focus and input state. The renderer draws through libraries already on Windows.
+
+```mermaid
+flowchart TB
+    subgraph exe["Your executable"]
+        app["Your app<br/>Data and callbacks"]
+        host["Control host<br/>Layout, controls and input"]
+        renderer["Renderer<br/>Text, shapes and images"]
+        app -->|"Create or update controls"| host
+        host -->|"Notify your callbacks"| app
+        host -->|"Draw controls"| renderer
+    end
+    renderer --> windows["Windows drawing libraries<br/>Direct2D and DirectWrite"]
+```
+
+**The control logic is yours to change.** Edit a slider's keyboard handling in its [control header](include/slim_ui/sui_ctrl_slider.h), or change shared focus navigation in the [host](include/slim_ui/sui_controls.h). The diagram's boxes are ordinary C code you can follow and modify.
+
+<details>
+<summary>Follow a click through the example below</summary>
+
+```mermaid
+flowchart LR
+    click["Mouse click"] --> input["Host handles input"]
+    input --> callback["Your callback<br/>Increment the counter"]
+    callback --> build["Your build function<br/>Update the label and button"]
+    build --> repaint["Request a repaint"]
+    repaint --> paint["Windows sends WM_PAINT<br/>Your window draws the controls"]
+```
+
+This example rebuilds its controls when the count changes. Rebuilding is an app decision; ordinary input handling does not require rebuilding the whole window. Keep values you want to preserve in your app's data.
+
+</details>
+
 ## Your first window
 
-This is a complete program. It shows a label and a button, and the label counts your clicks.
+Describe your layout in C. Slim UI places the controls and scales them for the display:
+
+```c
+sui_begin(host, sui_inset(16.0f), 8.0f, SUI_CLEAR_PAGE);
+    sui_label(host, app->message);
+    sui_button(host, ID_BUTTON, L"Click me", SUI_BTN_DEFAULT);
+sui_end(host);
+```
+
+Keep your app's data in your own struct and rebuild the layout when it changes. You can also [place controls at exact pixel positions](docs/reference.md#controls--imperative-api).
+
+<details>
+<summary><strong>Complete example: a window that counts your clicks</strong></summary>
+
+This program includes the window setup, drawing and input handling. It uses automatic layout and vsync animation.
 
 ```c
 #define SUI_FEATURE_CUSTOM_CONTROLS
@@ -170,126 +232,44 @@ If you'd rather skip CMake, run this from a Visual Studio developer prompt inste
 cl /O1 /utf-8 /std:c11 /I slim-ui\include hello.c d2d1.lib dwrite.lib dwmapi.lib user32.lib gdi32.lib ole32.lib shell32.lib windowscodecs.lib
 ```
 
-## How it works
+For an app that moves between monitors, also handle `WM_DPICHANGED`. The [full window procedure](docs/reference.md#full-wndproc-wiring) shows how.
 
-A window needs two things, and `hello.c` creates both in `WM_CREATE`:
+</details>
 
-- a **renderer** (`SuiRenderer`), which does the drawing
-- a **host** (`SuiControlHost`), which holds the controls and keeps track of hover, focus and animation
+For the smallest build, see [`examples/tiny.c`](examples/tiny.c) and run `examples\build-tiny.cmd` from a Visual Studio developer prompt. It removes unused controls and the C runtime; app size depends on your controls and build settings. For C# setup and examples, see the [.NET guide](dotnet/README.md).
 
-The rest is an ordinary window procedure with four additions:
+## What's included
 
-1. `sui_default_msg` goes first. It handles the mouse, the keyboard, focus and screen readers, so you don't have to.
-2. `WM_SIZE` calls `build`, because where controls go depends on the size of the window.
-3. `WM_PAINT` draws everything with `sui_ctrl_draw_all`.
-4. `WM_SUI_VSYNC` moves animations on by one frame.
-
-`build` describes the window using your app's data. When the data changes, call it again, as `on_click` does above. This recreates the controls, so keep anything you need to remember in your own struct, including what someone has typed.
-
-A finished app should also handle `WM_DPICHANGED`, for when the window moves to a monitor with a different scale. The [full window procedure](docs/reference.md#full-wndproc-wiring) in the reference shows how.
-
-## Placing controls
-
-There are two ways to do it, and you can use both in the same window.
-
-**Automatic layout** is what `hello.c` uses. You put controls in rows and columns, and Slim UI works out where everything goes. Sizes scale with the display on their own. It needs `SUI_FEATURE_DECL`.
-
-```c
-sui_begin(host, sui_inset(16.0f), 8.0f, SUI_CLEAR_PAGE);
-    sui_label(host, L"Settings");
-    sui_hstack(host, 2, 12.0f);
-        sui_checkbox(host, ID_AUTOSTART, L"Start with Windows", 1);
-        sui_checkbox(host, ID_NOTIFY, L"Show notifications", 0);
-    sui_end(host);
-    sui_button(host, ID_SAVE, L"Save", SUI_BTN_DEFAULT);
-sui_end(host);
-```
-
-**Exact positions** are for when you want full control. Each control gets a rectangle in physical pixels, so scaling for the display is up to you.
-
-```c
-sui_ctrl_add_label(host, ID_TITLE, 16, 16, 300, 24, L"Settings");
-sui_ctrl_add_checkbox(host, ID_AUTOSTART, 16, 48, 300, 28, L"Start with Windows", 1);
-sui_ctrl_add_button(host, ID_SAVE, 16, 84, 120, 32, L"Save", 1);
-```
-
-## Everyday tasks
-
-**Read a value.** Find the control by its ID:
-
-```c
-float volume = sui_ctrl_find(host, ID_VOLUME)->d.slider.value;
-int autostart = (sui_ctrl_find(host, ID_AUTOSTART)->state & SUI_CTRL_CHECKED) != 0;
-const wchar_t* name = sui_ctrl_find(host, ID_NAME)->text;
-```
-
-**Switch to dark mode:**
-
-```c
-app->host.scheme = &sui_scheme_dark;
-InvalidateRect(hwnd, NULL, FALSE);
-```
-
-**Add a tooltip:**
-
-```c
-sui_ctrl_set_tooltip(host, ID_SAVE, L"Saves your changes.");
-```
-
-**Restyle a single control:**
-
-```c
-sui_ctrl_set_style_color(host, ID_SAVE, SUI_STYLE_BG_COLOR, 0xFF8D28);
-sui_ctrl_set_font_family(host, ID_SAVE, L"Cambria");
-```
-
-**Change the font everywhere:**
-
-```c
-SuiTypography fonts = sui_typography_default;
-wcscpy_s(fonts.body.family, 64, L"Cambria");
-sui_renderer_apply_typography(&app->renderer, &fonts);
-```
-
-**Change how a control works.** Each control has its own file, such as `include/slim_ui/sui_ctrl_slider.h`, with its drawing and input handling together. Edit it yourself, or ask an LLM to change it or write a new version for you.
-
-**Make your program smaller.** Here's what each step does to a Hello World window. All three are a single `.exe` with no extra DLLs.
-
-| Hello World | Size |
+| Kind | Controls |
 |---|---|
-| `hello.c` from this page, with everything on | 380 KB |
-| Only a label and a button | 179 KB |
-| No C runtime either | 60.5 KB |
+| Actions | Buttons |
+| Choices | Checkboxes, radio buttons, drop-down lists, sliders, number spinners, color swatches |
+| Text | Labels, single-line inputs and editable multi-line text, with selection, clipboard, undo and redo |
+| Lists and navigation | Grouped lists, animated tabs, side menus |
+| Layout | Containers, scrolling areas |
+| Extras | Images, progress bars, tooltips, keyboard, mouse-button and gamepad shortcut recorders |
 
-To leave out controls you don't use, define `SUI_NO_TABS`, `SUI_NO_LIST` and others like them before including the header. Automatic layout needs those controls, so this only works with exact positions. [`examples/tiny.c`](examples/tiny.c) is the smallest version, and `examples\build-tiny.cmd` builds it from a Visual Studio developer prompt.
+Arrange controls in rows, columns or wrapping flows, with flexible sizing and scrolling containers. Use exact pixel positions when you need them. Lists and drop-downs can fetch items on demand from your own data. The [API reference](docs/reference.md) covers setup, controls and customization.
 
-## Shaders
+## Give your controls a different look
 
-Slim UI draws with Direct2D, so a pixel shader can run on any control. `sui_ctrl_set_paint` hands one control's drawing to your function:
-
-```c
-sui_ctrl_set_paint(host, ID_LOGO, paint_with_shader, app);
-```
-
-Your function calls `sui_ctrl_draw_self` to draw the control into a bitmap, then runs the shader over that bitmap on its way to the screen. Nothing else about the control changes, so a text field with a shader still takes typing, focus and clicks.
+A custom paint callback lets you change how a control draws. The demo uses it to put an animated dusk background behind the logo and a flowing glow around a text field. Typing, focus and clicks still work as usual.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/shader-dark.png">
-  <img src="docs/shader-light.png" alt="The demo's Shader page: the logo rippling under a bar of light, and a text field with light running around its border">
+  <img src="docs/shader-light.png" alt="The demo's Shader page: the logo on a slow night sky with warm light running along its swoosh, and a text field with color flowing around its border">
 </picture>
 
-The demo's Shader page does this with an animated ripple on an image and a glowing border on a text field. Start with `PaintWithShader` in [`demo/main.cpp`](demo/main.cpp). The shaders are [`demo/shader_ripple.hlsl`](demo/shader_ripple.hlsl) and [`demo/shader_glow.hlsl`](demo/shader_glow.hlsl), and [`demo/shader_effect.cpp`](demo/shader_effect.cpp) connects them to Direct2D. That code has its own file because the real Direct2D headers can't share one with `slim_ui.h`.
+The demo includes a [night sky shader](demo/shader_dusk.hlsl) and a [glow shader](demo/shader_glow.hlsl). Start with `PaintWithShader` in [`demo/main.cpp`](demo/main.cpp) and its [Direct2D effect](demo/shader_effect.cpp): the shader integration is example code you can adapt.
 
-## Using it from C#
+## Explore and contribute
 
-The `dotnet` folder wraps Slim UI for .NET 8, so you can build the same windows from C# without writing any Win32 code. Its [README](dotnet/README.md) explains how.
+- [API reference](docs/reference.md) — controls, layout, themes and lifecycle.
+- [Demo source](demo/main.cpp) — a working app that exercises every control.
+- [C# / .NET guide](dotnet/README.md) — build the same UI without writing Win32 code.
 
-## Learn more
-
-- The [reference](docs/reference.md) covers every function, control, option and limit.
-- [`demo/main.cpp`](demo/main.cpp) is a full app that uses every control.
-- `tests\build-tests.ps1` builds and runs the tests.
+Found a bug or have an idea? [Open an issue](https://github.com/live-sound/slim-ui/issues) with a small example or a description of what you'd like to build. Pull requests are welcome.
 
 ## License
 
-Slim UI is free to use under the [MIT License](LICENSE).
+Free to use and modify under the [MIT License](LICENSE).

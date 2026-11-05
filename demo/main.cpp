@@ -523,7 +523,7 @@ static void UpdateShaderClock(TestbedData* d) {
 /* A control draws itself into a bitmap the usual way, and its shader runs on the way to the screen. */
 static void PaintWithShader(SuiControlHost* host, SuiControl* c, void* user) {
     TestbedData* d = static_cast<TestbedData*>(user);
-    const int kind = c->type == SUI_CTRL_IMAGE ? DEMO_SHADER_RIPPLE : DEMO_SHADER_GLOW;
+    const int kind = c->type == SUI_CTRL_IMAGE ? DEMO_SHADER_DUSK : DEMO_SHADER_GLOW;
     /* The glow reaches past the edges of the text input. */
     const float margin = kind == DEMO_SHADER_GLOW ? (float)(int)(14.0f * (float)d->dpi / 96.0f) : 0.0f;
     void* screen = d->renderer.render_target;
