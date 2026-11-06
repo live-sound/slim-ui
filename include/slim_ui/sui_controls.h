@@ -52,8 +52,8 @@ static int sui_ctrl_hover_tick(SuiControlHost* host, float dt_ms) {
         /* Scrollbar reveal — set to 1 by keyboard/wheel activity,
          * decays linearly so the bar lingers ~1s after last input then fades. */
         if (c->type == SUI_CTRL_TEXTVIEW) animating |= sui__scroll_reveal_tick(&c->d.textview.sb_reveal, dt_ms);
-        if (c->type == SUI_CTRL_LIST) animating |= sui__scroll_reveal_tick(&c->d.list.sb_reveal, dt_ms);
-        if (c->type == SUI_CTRL_TABS) {
+        if ((SUI__HAS_LIST && c->type == SUI_CTRL_LIST)) animating |= sui__scroll_reveal_tick(&c->d.list.sb_reveal, dt_ms);
+        if ((SUI__HAS_TABS && c->type == SUI_CTRL_TABS)) {
             float content_step = dt_ms /
                 (c->d.tabs.content_anim_vertical
                     ? SUI_TAB_VERTICAL_CONTENT_ANIM_MS
@@ -111,16 +111,16 @@ static void sui_ctrl_on_mouse_leave(SuiControlHost* host) {
             c->state &= ~SUI_CTRL_HOVER;
             changed = 1;
         }
-        if (c->type == SUI_CTRL_NAV_LIST && c->d.nav.hover_item != -1) {
+        if ((SUI__HAS_NAV_LIST && c->type == SUI_CTRL_NAV_LIST) && c->d.nav.hover_item != -1) {
             c->d.nav.hover_item = -1;
             changed = 1;
-        } else if (c->type == SUI_CTRL_LIST && c->d.list.hover_row != -1) {
+        } else if ((SUI__HAS_LIST && c->type == SUI_CTRL_LIST) && c->d.list.hover_row != -1) {
             c->d.list.hover_row = -1;
             changed = 1;
-        } else if (c->type == SUI_CTRL_TABS && c->d.tabs.hover_item != -1) {
+        } else if ((SUI__HAS_TABS && c->type == SUI_CTRL_TABS) && c->d.tabs.hover_item != -1) {
             c->d.tabs.hover_item = -1;
             changed = 1;
-        } else if (c->type == SUI_CTRL_SPINNER && (c->d.spinner.hover_up || c->d.spinner.hover_down)) {
+        } else if ((SUI__HAS_SPINNER && c->type == SUI_CTRL_SPINNER) && (c->d.spinner.hover_up || c->d.spinner.hover_down)) {
             c->d.spinner.hover_up = 0;
             c->d.spinner.hover_down = 0;
             changed = 1;
@@ -205,7 +205,7 @@ static void sui_ctrl_clear_page(SuiControlHost* host) {
     /* Free heap-allocated control buffers in slots about to be discarded
      * (those past persistent_control_count). Persistent slots keep their buffers. */
     for (i = host->persistent_control_count; i < host->control_count; i++) {
-        if (host->controls[i].type == SUI_CTRL_SHORTCUT_RECORDER)
+        if ((SUI__HAS_SHORTCUT_RECORDER && host->controls[i].type == SUI_CTRL_SHORTCUT_RECORDER))
             sui_ctrl_shortcut_cancel_recording(host, &host->controls[i], 1);
         sui_ctrl_textview_release(&host->controls[i]);
         sui_ctrl_nav_release(&host->controls[i]);
@@ -264,7 +264,7 @@ static int sui_ctrl_hit_test_scope(SuiControlHost* host, int parent_id,
             if (hit >= 0) return hit;
             continue; /* container itself is non-interactive */
         }
-        if (c->type == SUI_CTRL_SCROLLVIEW) {
+        if ((SUI__HAS_SCROLLVIEW && c->type == SUI_CTRL_SCROLLVIEW)) {
             int hit;
             /* Gate to scrollview rect (clipped). */
             if (mx < c->x || mx >= c->x + c->w
@@ -280,7 +280,7 @@ static int sui_ctrl_hit_test_scope(SuiControlHost* host, int parent_id,
             if (hit >= 0) return hit;
             continue; /* empty content area is non-interactive */
         }
-        if (c->type == SUI_CTRL_TABS) {
+        if ((SUI__HAS_TABS && c->type == SUI_CTRL_TABS)) {
             SuiRect content;
             int hit;
             if (mx < c->x || mx >= c->x + c->w
@@ -299,7 +299,7 @@ static int sui_ctrl_hit_test_scope(SuiControlHost* host, int parent_id,
         if (mx < c->x || mx >= c->x + c->w || my < c->y || my >= c->y + c->h)
             continue;
         /* Decorative / non-interactive controls pass hits through. */
-        if (c->type == SUI_CTRL_LABEL || c->type == SUI_CTRL_IMAGE
+        if (c->type == SUI_CTRL_LABEL || (SUI__HAS_IMAGE && c->type == SUI_CTRL_IMAGE)
                 || c->type == SUI_CTRL_PROGRESS) continue;
         return order[i];
     }
@@ -327,7 +327,7 @@ static int sui_ctrl_tooltip_hit_test_scope(SuiControlHost* host, int parent_id,
             if (inside && c->tooltip && c->tooltip[0]) return order[i];
             continue;
         }
-        if (c->type == SUI_CTRL_SCROLLVIEW) {
+        if ((SUI__HAS_SCROLLVIEW && c->type == SUI_CTRL_SCROLLVIEW)) {
             int hit;
             if (mx < c->x || mx >= c->x + c->w
                     || my < c->y || my >= c->y + c->h)
@@ -338,7 +338,7 @@ static int sui_ctrl_tooltip_hit_test_scope(SuiControlHost* host, int parent_id,
             if (c->tooltip && c->tooltip[0]) return order[i];
             continue;
         }
-        if (c->type == SUI_CTRL_TABS) {
+        if ((SUI__HAS_TABS && c->type == SUI_CTRL_TABS)) {
             SuiRect content;
             int hit;
             inside = (mx >= c->x && mx < c->x + c->w && my >= c->y && my < c->y + c->h);
@@ -373,11 +373,11 @@ static int sui_ctrl_next_focusable(SuiControlHost* host, int from, int dir) {
         if (host->controls[idx].state & (SUI_CTRL_HIDDEN | SUI_CTRL_DISABLED))
             continue;
         if (host->controls[idx].type == SUI_CTRL_LABEL
-            || host->controls[idx].type == SUI_CTRL_TOOLTIP
-            || host->controls[idx].type == SUI_CTRL_IMAGE
+            || (SUI__HAS_TOOLTIP && host->controls[idx].type == SUI_CTRL_TOOLTIP)
+            || (SUI__HAS_IMAGE && host->controls[idx].type == SUI_CTRL_IMAGE)
             || host->controls[idx].type == SUI_CTRL_PROGRESS
             || host->controls[idx].type == SUI_CTRL_CONTAINER
-            || host->controls[idx].type == SUI_CTRL_SCROLLVIEW)
+            || (SUI__HAS_SCROLLVIEW && host->controls[idx].type == SUI_CTRL_SCROLLVIEW))
             continue;
         /* Skip unchecked radios in a group -- only checked radio is a tab stop */
         if (host->controls[idx].type == SUI_CTRL_RADIO
@@ -401,9 +401,9 @@ static void sui_ctrl_set_focus(SuiControlHost* host, int index) {
         if (host->controls[old].type == SUI_CTRL_EDIT
                 || host->controls[old].type == SUI_CTRL_TEXTVIEW)
             KillTimer(host->hwnd, SUI_CARET_TIMER_ID);
-        if (host->controls[old].type == SUI_CTRL_SPINNER)
+        if ((SUI__HAS_SPINNER && host->controls[old].type == SUI_CTRL_SPINNER))
             sui_ctrl_spinner_commit(host, &host->controls[old]);
-        if (host->controls[old].type == SUI_CTRL_SHORTCUT_RECORDER)
+        if ((SUI__HAS_SHORTCUT_RECORDER && host->controls[old].type == SUI_CTRL_SHORTCUT_RECORDER))
             sui_ctrl_shortcut_cancel_recording(host, &host->controls[old], 1);
     }
     host->focused_control = index;
@@ -442,7 +442,7 @@ static void sui_ctrl_tabs_draw_content_bitmap_xy(SuiControlHost* host, SuiContro
     SuiRect content;
     D2D1_RECT_F dst;
     float w, h;
-    if (!host || !host->renderer || !tabs || tabs->type != SUI_CTRL_TABS) return;
+    if (!host || !host->renderer || !tabs || (!SUI__HAS_TABS || tabs->type != SUI_CTRL_TABS)) return;
     if (!tabs->d.tabs.content_bitmap) return;
     if (!host->renderer->render_target) return;
     if (opacity <= 0.001f) return;
@@ -475,7 +475,7 @@ static void sui_ctrl_tabs_draw_content_subtree_xy(SuiControlHost* host, SuiContr
                                                   float opacity) {
     SuiRect content;
     int opacity_layer = 0;
-    if (!host || !tabs || tabs->type != SUI_CTRL_TABS) return;
+    if (!host || !tabs || (!SUI__HAS_TABS || tabs->type != SUI_CTRL_TABS)) return;
     if (opacity <= 0.001f) return;
     if (opacity > 1.0f) opacity = 1.0f;
     if (!sui_ctrl_tabs_content_rect(tabs, &content)) return;
@@ -508,21 +508,21 @@ static void sui_ctrl_draw_self(SuiControlHost* host, SuiControl* c) {
         case SUI_CTRL_CHECKBOX:     sui_ctrl_draw_checkbox(host, c); break;
         case SUI_CTRL_RADIO:        sui_ctrl_draw_radio(host, c); break;
         case SUI_CTRL_EDIT:         sui_ctrl_draw_edit(host, c); break;
-        case SUI_CTRL_COMBOBOX:     sui_ctrl_draw_combobox(host, c); break;
-        case SUI_CTRL_SLIDER:       sui_ctrl_draw_slider(host, c); break;
-        case SUI_CTRL_SPINNER:      sui_ctrl_draw_spinner(host, c); break;
-        case SUI_CTRL_COLOR_SWATCH: sui_ctrl_draw_color_swatch(host, c); break;
+        case SUI_CTRL_COMBOBOX: if (!SUI__HAS_COMBOBOX) break;     sui_ctrl_draw_combobox(host, c); break;
+        case SUI_CTRL_SLIDER: if (!SUI__HAS_SLIDER) break;       sui_ctrl_draw_slider(host, c); break;
+        case SUI_CTRL_SPINNER: if (!SUI__HAS_SPINNER) break;      sui_ctrl_draw_spinner(host, c); break;
+        case SUI_CTRL_COLOR_SWATCH: if (!SUI__HAS_COLOR_SWATCH) break; sui_ctrl_draw_color_swatch(host, c); break;
         case SUI_CTRL_LABEL:        sui_ctrl_draw_label(host, c); break;
-        case SUI_CTRL_TOOLTIP:      sui_ctrl_draw_tooltip(host, c); break;
-        case SUI_CTRL_NAV_LIST:     sui_ctrl_draw_nav_list(host, c); break;
-        case SUI_CTRL_LIST:         sui_ctrl_draw_list(host, c); break;
-        case SUI_CTRL_TABS:         sui_ctrl_draw_tabs(host, c); break;
-        case SUI_CTRL_IMAGE:        sui_ctrl_draw_image(host, c); break;
-        case SUI_CTRL_SHORTCUT_RECORDER: sui_ctrl_draw_shortcut_recorder(host, c); break;
+        case SUI_CTRL_TOOLTIP: if (!SUI__HAS_TOOLTIP) break;      sui_ctrl_draw_tooltip(host, c); break;
+        case SUI_CTRL_NAV_LIST: if (!SUI__HAS_NAV_LIST) break;     sui_ctrl_draw_nav_list(host, c); break;
+        case SUI_CTRL_LIST: if (!SUI__HAS_LIST) break;         sui_ctrl_draw_list(host, c); break;
+        case SUI_CTRL_TABS: if (!SUI__HAS_TABS) break;         sui_ctrl_draw_tabs(host, c); break;
+        case SUI_CTRL_IMAGE: if (!SUI__HAS_IMAGE) break;        sui_ctrl_draw_image(host, c); break;
+        case SUI_CTRL_SHORTCUT_RECORDER: if (!SUI__HAS_SHORTCUT_RECORDER) break; sui_ctrl_draw_shortcut_recorder(host, c); break;
         case SUI_CTRL_PROGRESS:     sui_ctrl_draw_progress(host, c); break;
         case SUI_CTRL_CONTAINER:    sui_ctrl_draw_container(host, c); break;
         case SUI_CTRL_TEXTVIEW:     sui_ctrl_draw_textview(host, c); break;
-        case SUI_CTRL_SCROLLVIEW:   sui_ctrl_draw_scrollview(host, c); break;
+        case SUI_CTRL_SCROLLVIEW: if (!SUI__HAS_SCROLLVIEW) break;   sui_ctrl_draw_scrollview(host, c); break;
     }
 }
 
@@ -551,7 +551,7 @@ static void sui_ctrl_draw_subtree(SuiControlHost* host, int parent_id) {
             if (clipped)
                 sui_renderer_pop_clip(host->renderer);
         }
-        if (c->type == SUI_CTRL_SCROLLVIEW) {
+        if ((SUI__HAS_SCROLLVIEW && c->type == SUI_CTRL_SCROLLVIEW)) {
             D2D1_MATRIX_3X2_F saved;
             sui_renderer_push_clip(host->renderer, c->x, c->y, c->w, c->h);
             sui_ctrl_scrollview_save_transform(host, &saved);
@@ -562,7 +562,7 @@ static void sui_ctrl_draw_subtree(SuiControlHost* host, int parent_id) {
             sui_renderer_pop_clip(host->renderer);
             sui_ctrl_draw_scrollview_chrome(host, c);
         }
-        if (c->type == SUI_CTRL_TABS) {
+        if ((SUI__HAS_TABS && c->type == SUI_CTRL_TABS)) {
             if (sui_ctrl_tabs_push_content_clip(host, c)) {
                 float new_dx = sui_ctrl_tabs_content_new_offset(c);
                 float new_dy = sui_ctrl_tabs_content_new_offset_y(c);
@@ -601,7 +601,7 @@ static void* sui_ctrl_tabs_capture_content_bitmap_ex(SuiControlHost* host, SuiCo
     HRESULT hr;
     if (out_w) *out_w = 0.0f;
     if (out_h) *out_h = 0.0f;
-    if (!host || !tabs || tabs->type != SUI_CTRL_TABS) return NULL;
+    if (!host || !tabs || (!SUI__HAS_TABS || tabs->type != SUI_CTRL_TABS)) return NULL;
     r = host->renderer;
     if (!r || !r->render_target) return NULL;
     if (!sui_ctrl_tabs_content_rect(tabs, &content)) return NULL;
@@ -670,7 +670,7 @@ static void sui_ctrl_tabs_start_content_transition_axis_ex(SuiControlHost* host,
                                                            int dir, int vertical, float travel,
                                                            SuiTabContentPaintFn paint_fn,
                                                            void* paint_user) {
-    if (!host || !tabs || tabs->type != SUI_CTRL_TABS) return;
+    if (!host || !tabs || (!SUI__HAS_TABS || tabs->type != SUI_CTRL_TABS)) return;
     if (old_selected == new_selected) return;
     if (dir == 0) dir = new_selected < old_selected ? 1 : -1;
     sui_ctrl_tabs_release_content_bitmap(tabs);
@@ -811,7 +811,7 @@ static void sui_ctrl_intrinsic_size(SuiControlHost* host, SuiControl* c,
         h = (c->h > 0.0f) ? c->h : SUI_DEFAULT_LABEL_H * s;
         break;
     }
-    case SUI_CTRL_TOOLTIP: {
+    case SUI_CTRL_TOOLTIP: if (!SUI__HAS_TOOLTIP) break; {
         w = SUI_DEFAULT_TOOLTIP_SIZE * s;
         h = SUI_DEFAULT_TOOLTIP_SIZE * s;
         break;
@@ -823,7 +823,7 @@ static void sui_ctrl_intrinsic_size(SuiControlHost* host, SuiControl* c,
         h = (c->h > 0.0f) ? c->h : SUI_CHECKBOX_H * s;
         break;
     }
-    case SUI_CTRL_COMBOBOX: {
+    case SUI_CTRL_COMBOBOX: if (!SUI__HAS_COMBOBOX) break; {
         int i; float maxw = 0.0f;
         if (r) {
             if (sui_ctrl_combo_is_virtual(c)) {
@@ -856,7 +856,7 @@ static void sui_ctrl_intrinsic_size(SuiControlHost* host, SuiControl* c,
         h = gh;
         break;
     }
-    case SUI_CTRL_SCROLLVIEW: {
+    case SUI_CTRL_SCROLLVIEW: if (!SUI__HAS_SCROLLVIEW) break; {
         float gw = 0.0f, gh = 0.0f;
         /* Reserve the documented ~12dp hot zone (sui_ctrl_scrollview.h) so
          * children laid out with the same convention can't clip at min_w. */
@@ -875,9 +875,13 @@ static void sui_ctrl_intrinsic_size(SuiControlHost* host, SuiControl* c,
         h = 80.0f * s;
         break;
     }
+#if SUI__HAS_SLIDER
     case SUI_CTRL_SLIDER:
+#endif
     case SUI_CTRL_EDIT:
+#if SUI__HAS_SPINNER
     case SUI_CTRL_SPINNER:
+#endif
         /* No text-derived intrinsic; use a baseline floor matching the
          * declarative API's SUI_DEFAULT_CTRL_MIN_W so imperative-built
          * windows don't collapse to zero width. */
@@ -888,11 +892,11 @@ static void sui_ctrl_intrinsic_size(SuiControlHost* host, SuiControl* c,
         w = 80.0f * s;
         h = (c->h > 0.0f) ? c->h : SUI_DEFAULT_PROG_H * s;
         break;
-    case SUI_CTRL_TABS:
+    case SUI_CTRL_TABS: if (!SUI__HAS_TABS) break;
         w = 120.0f * s;
         h = (c->h > 0.0f) ? c->h : (SUI_DEFAULT_TAB_H + SUI_DEFAULT_TAB_CONTENT_GAP + 80.0f) * s;
         break;
-    case SUI_CTRL_SHORTCUT_RECORDER:
+    case SUI_CTRL_SHORTCUT_RECORDER: if (!SUI__HAS_SHORTCUT_RECORDER) break;
         /* Recordable indicator chip. ~80dp keeps the chip legible at min;
          * callers wanting a hard fixed visual width (e.g. 200dp settings
          * hotkey) set c->min_w explicitly. */
@@ -1230,7 +1234,7 @@ static void sui_ctrl_on_mouse_move(SuiControlHost* host, int mx, int my) {
 
     for (i = 0; i < host->control_count; i++) {
         SuiControl* list = &host->controls[i];
-        if (list->type != SUI_CTRL_LIST) continue;
+        if ((!SUI__HAS_LIST || list->type != SUI_CTRL_LIST)) continue;
         if (!list->d.list.sb_dragging) continue;
         {
             float sb_x, sb_y, sb_w, sb_h, thumb_y, thumb_h, ms;
@@ -1254,7 +1258,7 @@ static void sui_ctrl_on_mouse_move(SuiControlHost* host, int mx, int my) {
     /* Scrollview thumb drag — per-control state, no host-field aliasing. */
     for (i = 0; i < host->control_count; i++) {
         SuiControl* sv = &host->controls[i];
-        if (sv->type != SUI_CTRL_SCROLLVIEW) continue;
+        if ((!SUI__HAS_SCROLLVIEW || sv->type != SUI_CTRL_SCROLLVIEW)) continue;
         if (!sv->d.scroll.track_dragging) continue;
         {
             float sb_x, sb_y, sb_w, sb_h, thumb_y, thumb_h, ms;
@@ -1296,7 +1300,7 @@ static void sui_ctrl_on_mouse_move(SuiControlHost* host, int mx, int my) {
     /* Slider drag -- mouse is captured, bypass normal hit test */
     if (host->focused_control >= 0 && host->focused_control < host->control_count) {
         SuiControl* sl = &host->controls[host->focused_control];
-        if (sl->type == SUI_CTRL_SLIDER && sl->d.slider.dragging) {
+        if ((SUI__HAS_SLIDER && sl->type == SUI_CTRL_SLIDER) && sl->d.slider.dragging) {
             sui_ctrl_slider_update_from_mouse(sl, (float)mx);
             if (host->on_click) host->on_click(sl->id, host->on_click_data);
             InvalidateRect(host->hwnd, NULL, FALSE);
@@ -1316,7 +1320,7 @@ static void sui_ctrl_on_mouse_move(SuiControlHost* host, int mx, int my) {
             sui__textview_scroll_to_caret(host, fc);
             InvalidateRect(host->hwnd, NULL, FALSE);
             return;
-        } else if (fc->type == SUI_CTRL_SPINNER && fc->d.spinner.editing) {
+        } else if ((SUI__HAS_SPINNER && fc->type == SUI_CTRL_SPINNER) && fc->d.spinner.editing) {
             wchar_t val_buf[34];
             int len = fc->d.spinner.edit_len < 32 ? fc->d.spinner.edit_len : 31;
             float arrow_w = fc->w * 0.30f;
@@ -1384,7 +1388,7 @@ static void sui_ctrl_on_mouse_move(SuiControlHost* host, int mx, int my) {
     /* Spinner sub-control hover */
     { float s_sp = sui_ctrl_dpi_scale(host);
       for (i = 0; i < host->control_count; i++)
-          if (host->controls[i].type == SUI_CTRL_SPINNER)
+          if ((SUI__HAS_SPINNER && host->controls[i].type == SUI_CTRL_SPINNER))
               if (sui_ctrl_spinner_update_hover(&host->controls[i], i == hit,
                                                 (float)mx, (float)my, s_sp))
                   changed = 1;
@@ -1392,19 +1396,19 @@ static void sui_ctrl_on_mouse_move(SuiControlHost* host, int mx, int my) {
 
     /* Nav list item hover */
     for (i = 0; i < host->control_count; i++)
-        if (host->controls[i].type == SUI_CTRL_NAV_LIST)
+        if ((SUI__HAS_NAV_LIST && host->controls[i].type == SUI_CTRL_NAV_LIST))
             if (sui_ctrl_nav_update_hover(&host->controls[i], i == hit, (float)my))
                 changed = 1;
 
     /* Generic list item hover */
     for (i = 0; i < host->control_count; i++)
-        if (host->controls[i].type == SUI_CTRL_LIST)
+        if ((SUI__HAS_LIST && host->controls[i].type == SUI_CTRL_LIST))
             if (sui_ctrl_list_update_hover(&host->controls[i], i == hit, (float)my))
                 changed = 1;
 
     /* Horizontal tab item hover */
     for (i = 0; i < host->control_count; i++)
-        if (host->controls[i].type == SUI_CTRL_TABS)
+        if ((SUI__HAS_TABS && host->controls[i].type == SUI_CTRL_TABS))
             if (sui_ctrl_tabs_update_hover(host, &host->controls[i], i == hit, (float)mx, (float)my))
                 changed = 1;
 
@@ -1455,7 +1459,7 @@ static void sui_ctrl_on_lbutton_down(SuiControlHost* host, int mx, int my) {
     /* Scrollview: hit_test_scope returns the scrollview index when the cursor
      * is over the scrollbar thumb. Start a drag. Anchor and start-scroll live
      * in d.scroll so they don't alias textview's host->drag_start_* fields. */
-    if (host->controls[hit].type == SUI_CTRL_SCROLLVIEW) {
+    if ((SUI__HAS_SCROLLVIEW && host->controls[hit].type == SUI_CTRL_SCROLLVIEW)) {
         SuiControl* c = &host->controls[hit];
         c->d.scroll.track_dragging    = 1;
         c->d.scroll.track_drag_anchor = (float)my;
@@ -1466,7 +1470,7 @@ static void sui_ctrl_on_lbutton_down(SuiControlHost* host, int mx, int my) {
     }
 
     /* Slider: start drag immediately on any click within the control */
-    if (host->controls[hit].type == SUI_CTRL_SLIDER) {
+    if ((SUI__HAS_SLIDER && host->controls[hit].type == SUI_CTRL_SLIDER)) {
         SuiControl* c = &host->controls[hit];
         sui_ctrl_set_focus(host, hit);
         c->d.slider.dragging = 1;
@@ -1479,13 +1483,13 @@ static void sui_ctrl_on_lbutton_down(SuiControlHost* host, int mx, int my) {
 
     /* Spinner: text-area click enters edit mode + positions cursor;
      * arrow click steps immediately and repeats while held */
-    if (host->controls[hit].type == SUI_CTRL_SPINNER) {
+    if ((SUI__HAS_SPINNER && host->controls[hit].type == SUI_CTRL_SPINNER)) {
         SuiControl* c = &host->controls[hit];
         int in_up = 0;
         sui_ctrl_set_focus(host, hit);
         /* A focus callback can rebuild the page; do not use a replaced slot. */
         if (hit >= host->control_count || host->focused_control != hit ||
-            host->controls[hit].type != SUI_CTRL_SPINNER) return;
+            (!SUI__HAS_SPINNER || host->controls[hit].type != SUI_CTRL_SPINNER)) return;
         if (sui_ctrl_spinner_arrow_hit(c, sui_ctrl_dpi_scale(host), (float)mx, (float)my, &in_up)) {
             sui_ctrl_spinner_start_repeat(host, hit, in_up);
             return;
@@ -1517,7 +1521,7 @@ static void sui_ctrl_on_lbutton_down(SuiControlHost* host, int mx, int my) {
           sui_combo_popup_close(host);
     }
 
-    if (host->controls[hit].type == SUI_CTRL_LIST &&
+    if ((SUI__HAS_LIST && host->controls[hit].type == SUI_CTRL_LIST) &&
             sui_ctrl_list_hit_thumb(host, &host->controls[hit], (float)mx, (float)my)) {
         SuiControl* list = &host->controls[hit];
         list->d.list.sb_dragging = 1;
@@ -1530,7 +1534,7 @@ static void sui_ctrl_on_lbutton_down(SuiControlHost* host, int mx, int my) {
     }
 
     /* Combobox: toggle popup open/close */
-    if (host->controls[hit].type == SUI_CTRL_COMBOBOX) {
+    if ((SUI__HAS_COMBOBOX && host->controls[hit].type == SUI_CTRL_COMBOBOX)) {
         SuiControl* c = &host->controls[hit];
         sui_ctrl_set_focus(host, hit);
         if (c->d.combo.open) {
@@ -1564,7 +1568,7 @@ static void sui_ctrl_on_lbutton_up(SuiControlHost* host, int mx, int my) {
     /* End slider drag */
     if (host->focused_control >= 0 && host->focused_control < host->control_count) {
         SuiControl* sl = &host->controls[host->focused_control];
-        if (sl->type == SUI_CTRL_SLIDER && sl->d.slider.dragging) {
+        if ((SUI__HAS_SLIDER && sl->type == SUI_CTRL_SLIDER) && sl->d.slider.dragging) {
             sl->d.slider.dragging = 0;
             sl->state &= ~SUI_CTRL_PRESSED;
             ReleaseCapture();
@@ -1579,7 +1583,7 @@ static void sui_ctrl_on_lbutton_up(SuiControlHost* host, int mx, int my) {
         int j, dragging = 0;
         for (j = 0; j < host->control_count; j++) {
             SuiControl* list = &host->controls[j];
-            if (list->type == SUI_CTRL_LIST && list->d.list.sb_dragging) {
+            if ((SUI__HAS_LIST && list->type == SUI_CTRL_LIST) && list->d.list.sb_dragging) {
                 list->d.list.sb_dragging = 0;
                 list->d.list.sb_reveal = 1.0f;
                 dragging = 1;
@@ -1598,7 +1602,7 @@ static void sui_ctrl_on_lbutton_up(SuiControlHost* host, int mx, int my) {
         int j, dragging = 0;
         for (j = 0; j < host->control_count; j++) {
             SuiControl* sv = &host->controls[j];
-            if (sv->type == SUI_CTRL_SCROLLVIEW && sv->d.scroll.track_dragging) {
+            if ((SUI__HAS_SCROLLVIEW && sv->type == SUI_CTRL_SCROLLVIEW) && sv->d.scroll.track_dragging) {
                 sv->d.scroll.track_dragging = 0;
                 dragging = 1;
             }
@@ -1624,11 +1628,11 @@ static void sui_ctrl_on_lbutton_up(SuiControlHost* host, int mx, int my) {
             /* An open combobox is a persistent pressed state, not the
              * transient pointer-down state cleared by mouse-up. Its popup
              * teardown clears the flag after the close animation. */
-            if (host->controls[i].type == SUI_CTRL_COMBOBOX &&
+            if ((SUI__HAS_COMBOBOX && host->controls[i].type == SUI_CTRL_COMBOBOX) &&
                 host->controls[i].d.combo.open)
                 continue;
             host->controls[i].state &= ~SUI_CTRL_PRESSED;
-            if (host->controls[i].type == SUI_CTRL_TABS)
+            if ((SUI__HAS_TABS && host->controls[i].type == SUI_CTRL_TABS))
                 sui_ctrl_start_hover_anim(host);
             if (i == hit) {
                 if (host->controls[i].type == SUI_CTRL_BUTTON) {
@@ -1636,18 +1640,19 @@ static void sui_ctrl_on_lbutton_up(SuiControlHost* host, int mx, int my) {
                         host->on_click(host->controls[i].id, host->on_click_data);
                 } else if (host->controls[i].type == SUI_CTRL_CHECKBOX) {
                     host->controls[i].state ^= SUI_CTRL_CHECKED;
+                    sui_uia_notify_checked_changed(host, i, !(host->controls[i].state & SUI_CTRL_CHECKED));
                     if (host->on_click)
                         host->on_click(host->controls[i].id, host->on_click_data);
                 } else if (host->controls[i].type == SUI_CTRL_RADIO) {
                     sui_ctrl_radio_select(host, i);
                     if (host->on_click)
                         host->on_click(host->controls[i].id, host->on_click_data);
-                } else if (host->controls[i].type == SUI_CTRL_COLOR_SWATCH) {
+                } else if ((SUI__HAS_COLOR_SWATCH && host->controls[i].type == SUI_CTRL_COLOR_SWATCH)) {
                     if (sui__swatch_pick_color(host, &host->controls[i]) && host->on_click)
                         host->on_click(host->controls[i].id, host->on_click_data);
-                } else if (host->controls[i].type == SUI_CTRL_SHORTCUT_RECORDER) {
+                } else if ((SUI__HAS_SHORTCUT_RECORDER && host->controls[i].type == SUI_CTRL_SHORTCUT_RECORDER)) {
                     sui_ctrl_shortcut_activate(host, &host->controls[i]);
-                } else if (host->controls[i].type == SUI_CTRL_NAV_LIST) {
+                } else if ((SUI__HAS_NAV_LIST && host->controls[i].type == SUI_CTRL_NAV_LIST)) {
                     SuiControl* nav = &host->controls[i];
                     float ih = nav->d.nav.item_height;
                     int idx  = (int)(((float)my - nav->y + nav->d.nav.scroll_offset) / ih);
@@ -1657,7 +1662,7 @@ static void sui_ctrl_on_lbutton_up(SuiControlHost* host, int mx, int my) {
                         if (host->on_click)
                             host->on_click(nav->id, host->on_click_data);
                     }
-                } else if (host->controls[i].type == SUI_CTRL_LIST) {
+                } else if ((SUI__HAS_LIST && host->controls[i].type == SUI_CTRL_LIST)) {
                     SuiControl* list = &host->controls[i];
                     int row = sui_ctrl_list_row_at(list, (float)my);
                     SuiListRow row_view;
@@ -1670,7 +1675,7 @@ static void sui_ctrl_on_lbutton_up(SuiControlHost* host, int mx, int my) {
                         if (host->on_click)
                             host->on_click(list->id, host->on_click_data);
                     }
-                } else if (host->controls[i].type == SUI_CTRL_TABS) {
+                } else if ((SUI__HAS_TABS && host->controls[i].type == SUI_CTRL_TABS)) {
                     SuiControl* tabs = &host->controls[i];
                     int idx = sui_ctrl_tabs_item_at(host, tabs, (float)mx, (float)my);
                     if (idx >= 0 && idx < tabs->d.tabs.item_count && idx != tabs->d.tabs.selected) {
@@ -1705,7 +1710,7 @@ static int sui_ctrl_on_shortcut_mouse_button_up(SuiControlHost* host, UINT mouse
 static void sui_ctrl_on_lbutton_dblclk(SuiControlHost* host, int mx, int my) {
     int hit = sui_ctrl_hit_test(host, (float)mx, (float)my);
     if (hit < 0) return;
-    if (host->controls[hit].type == SUI_CTRL_SPINNER) {
+    if ((SUI__HAS_SPINNER && host->controls[hit].type == SUI_CTRL_SPINNER)) {
         int in_up;
         if (sui_ctrl_spinner_arrow_hit(&host->controls[hit], sui_ctrl_dpi_scale(host),
                                       (float)mx, (float)my, &in_up))
@@ -1802,15 +1807,16 @@ static float sui__ctrl_vertical_overflow(SuiControlHost* host, SuiControl* c) {
     case SUI_CTRL_TEXTVIEW:
         visible_h = c->h - 16.0f * sui_ctrl_dpi_scale(host);
         return c->d.textview.content_height - visible_h;
-    case SUI_CTRL_NAV_LIST:
+    case SUI_CTRL_NAV_LIST: if (!SUI__HAS_NAV_LIST) break;
         return (float)c->d.nav.item_count * c->d.nav.item_height - c->h;
-    case SUI_CTRL_LIST:
+    case SUI_CTRL_LIST: if (!SUI__HAS_LIST) break;
         return sui_ctrl_list_content_height(c) - c->h;
-    case SUI_CTRL_SCROLLVIEW:
+    case SUI_CTRL_SCROLLVIEW: if (!SUI__HAS_SCROLLVIEW) break;
         return c->d.scroll.content_h - c->h;
     default:
         return 0.0f;
     }
+    return 0.0f;
 }
 
 static int sui__ctrl_is_effectively_hidden(SuiControlHost* host, SuiControl* c) {
@@ -1857,7 +1863,7 @@ static void sui__ctrl_nav_on_content_wheel(SuiControlHost* host,
     if (!host || delta == 0) return;
     for (i = 0; i < host->control_count; ++i) {
         SuiControl* candidate = &host->controls[i];
-        if (candidate->type != SUI_CTRL_NAV_LIST ||
+        if ((!SUI__HAS_NAV_LIST || candidate->type != SUI_CTRL_NAV_LIST) ||
             !candidate->d.nav.content_wheel_enabled ||
             (candidate->state & (SUI_CTRL_HIDDEN | SUI_CTRL_DISABLED))) continue;
         if ((float)mx < candidate->d.nav.content_wheel_x ||
@@ -1911,7 +1917,7 @@ static void sui_ctrl_on_mouse_wheel(SuiControlHost* host, int mx, int my, int de
         sui_ctrl_start_hover_anim(host);
         InvalidateRect(host->hwnd, NULL, FALSE);
     }
-    if (hit >= 0 && host->controls[hit].type == SUI_CTRL_NAV_LIST) {
+    if (hit >= 0 && (SUI__HAS_NAV_LIST && host->controls[hit].type == SUI_CTRL_NAV_LIST)) {
         SuiControl* nav = &host->controls[hit];
         float scroll_amount = nav->d.nav.item_height;
         float total_h       = (float)nav->d.nav.item_count * scroll_amount;
@@ -1923,7 +1929,7 @@ static void sui_ctrl_on_mouse_wheel(SuiControlHost* host, int mx, int my, int de
             InvalidateRect(host->hwnd, NULL, FALSE);
         }
     }
-    if (hit >= 0 && host->controls[hit].type == SUI_CTRL_LIST) {
+    if (hit >= 0 && (SUI__HAS_LIST && host->controls[hit].type == SUI_CTRL_LIST)) {
         SuiControl* list = &host->controls[hit];
         float scroll_amount = list->d.list.item_height > 0.0f ? list->d.list.item_height : 40.0f * sui_ctrl_dpi_scale(host);
         float max_scroll = sui_ctrl_list_content_height(list) - list->h;
@@ -1944,13 +1950,13 @@ static void sui_ctrl_on_mouse_wheel(SuiControlHost* host, int mx, int my, int de
      * (textview / nav_list / tabs); otherwise a control nested inside a scrollview would scroll
      * both at once. */
     if (hit < 0 || (host->controls[hit].type != SUI_CTRL_TEXTVIEW
-                 && host->controls[hit].type != SUI_CTRL_NAV_LIST
-                 && host->controls[hit].type != SUI_CTRL_LIST
-                 && host->controls[hit].type != SUI_CTRL_TABS)) {
+                 && (!SUI__HAS_NAV_LIST || host->controls[hit].type != SUI_CTRL_NAV_LIST)
+                 && (!SUI__HAS_LIST || host->controls[hit].type != SUI_CTRL_LIST)
+                 && (!SUI__HAS_TABS || host->controls[hit].type != SUI_CTRL_TABS))) {
         int j, best = -1, best_z = 0;
         for (j = 0; j < host->control_count; j++) {
             SuiControl* sv = &host->controls[j];
-            if (sv->type != SUI_CTRL_SCROLLVIEW) continue;
+            if ((!SUI__HAS_SCROLLVIEW || sv->type != SUI_CTRL_SCROLLVIEW)) continue;
             if (sv->state & (SUI_CTRL_HIDDEN | SUI_CTRL_DISABLED)) continue;
             if ((float)mx < sv->x || (float)mx >= sv->x + sv->w
                     || (float)my < sv->y || (float)my >= sv->y + sv->h) continue;
@@ -1982,7 +1988,7 @@ static void sui_ctrl_on_keydown_ex(SuiControlHost* host, WPARAM vk, LPARAM lp) {
       if (fc >= 0 && fc < host->control_count && host->controls[fc].type == SUI_CTRL_TEXTVIEW) {
           if (sui_ctrl_textview_on_keydown(host, fc, vk)) return;
       }
-      if (fc >= 0 && fc < host->control_count && host->controls[fc].type == SUI_CTRL_SHORTCUT_RECORDER) {
+      if (fc >= 0 && fc < host->control_count && (SUI__HAS_SHORTCUT_RECORDER && host->controls[fc].type == SUI_CTRL_SHORTCUT_RECORDER)) {
           if (sui_ctrl_shortcut_on_keydown(host, fc, vk, lp)) return;
       }
     }
@@ -1990,12 +1996,12 @@ static void sui_ctrl_on_keydown_ex(SuiControlHost* host, WPARAM vk, LPARAM lp) {
     /* Per-control key dispatch */
     if (host->focused_control >= 0 && host->focused_control < host->control_count) {
         SuiControl* c = &host->controls[host->focused_control];
-        if (c->type == SUI_CTRL_SLIDER   && sui_ctrl_slider_on_keydown(host, c, vk))  return;
-        if (c->type == SUI_CTRL_SPINNER  && sui_ctrl_spinner_on_keydown(host, c, vk)) return;
-        if (c->type == SUI_CTRL_COMBOBOX && sui_ctrl_combo_on_keydown(host, c, vk))   return;
-        if (c->type == SUI_CTRL_NAV_LIST && sui_ctrl_nav_on_keydown(host, c, vk))     return;
-        if (c->type == SUI_CTRL_LIST     && sui_ctrl_list_on_keydown(host, c, vk))    return;
-        if (c->type == SUI_CTRL_TABS) {
+        if ((SUI__HAS_SLIDER && c->type == SUI_CTRL_SLIDER)   && sui_ctrl_slider_on_keydown(host, c, vk))  return;
+        if ((SUI__HAS_SPINNER && c->type == SUI_CTRL_SPINNER)  && sui_ctrl_spinner_on_keydown(host, c, vk)) return;
+        if ((SUI__HAS_COMBOBOX && c->type == SUI_CTRL_COMBOBOX) && sui_ctrl_combo_on_keydown(host, c, vk))   return;
+        if ((SUI__HAS_NAV_LIST && c->type == SUI_CTRL_NAV_LIST) && sui_ctrl_nav_on_keydown(host, c, vk))     return;
+        if ((SUI__HAS_LIST && c->type == SUI_CTRL_LIST)     && sui_ctrl_list_on_keydown(host, c, vk))    return;
+        if ((SUI__HAS_TABS && c->type == SUI_CTRL_TABS)) {
             int next, dir;
             if (sui_ctrl_tabs_key_target(c, vk, &next, &dir)) {
                 int old_selected = c->d.tabs.selected;
@@ -2007,7 +2013,7 @@ static void sui_ctrl_on_keydown_ex(SuiControlHost* host, WPARAM vk, LPARAM lp) {
                 return;
             }
         }
-        if (c->type == SUI_CTRL_TABS     && sui_ctrl_tabs_on_keydown(host, c, vk))    {
+        if ((SUI__HAS_TABS && c->type == SUI_CTRL_TABS)     && sui_ctrl_tabs_on_keydown(host, c, vk))    {
             return;
         }
     }
@@ -2033,6 +2039,7 @@ static void sui_ctrl_on_keydown_ex(SuiControlHost* host, WPARAM vk, LPARAM lp) {
                 InvalidateRect(host->hwnd, NULL, FALSE);
             } else if (c->type == SUI_CTRL_CHECKBOX) {
                 c->state ^= SUI_CTRL_CHECKED;
+                sui_uia_notify_checked_changed(host, host->focused_control, !(c->state & SUI_CTRL_CHECKED));
                 if (host->on_click)
                     host->on_click(c->id, host->on_click_data);
                 InvalidateRect(host->hwnd, NULL, FALSE);
@@ -2071,6 +2078,13 @@ static void sui_ctrl_on_keydown_ex(SuiControlHost* host, WPARAM vk, LPARAM lp) {
         break;
     case VK_RETURN: {
         int i;
+        int fc = host->focused_control;
+        if (fc >= 0 && fc < host->control_count && host->controls[fc].type == SUI_CTRL_BUTTON
+            && !(host->controls[fc].state & (SUI_CTRL_DISABLED | SUI_CTRL_HIDDEN))) {
+            host->controls[fc].state |= SUI_CTRL_PRESSED;
+            InvalidateRect(host->hwnd, NULL, FALSE);
+            break;
+        }
         for (i = 0; i < host->control_count; i++) {
             if ((host->controls[i].state & SUI_CTRL_DEFAULT) && !(host->controls[i].state & SUI_CTRL_DISABLED)
                 && !(host->controls[i].state & SUI_CTRL_HIDDEN) && host->controls[i].type == SUI_CTRL_BUTTON) {
@@ -2097,7 +2111,7 @@ static void sui_ctrl_on_keydown(SuiControlHost* host, WPARAM vk) {
 static void sui_ctrl_on_keyup(SuiControlHost* host, WPARAM vk) {
     if (host->focused_control >= 0 && host->focused_control < host->control_count) {
         SuiControl* c = &host->controls[host->focused_control];
-        if (c->type == SUI_CTRL_SHORTCUT_RECORDER &&
+        if ((SUI__HAS_SHORTCUT_RECORDER && c->type == SUI_CTRL_SHORTCUT_RECORDER) &&
             sui_ctrl_shortcut_on_keyup(host, host->focused_control, vk)) {
             return;
         }
@@ -2114,7 +2128,8 @@ static void sui_ctrl_on_keyup(SuiControlHost* host, WPARAM vk) {
     if (vk == VK_RETURN) {
         int i;
         for (i = 0; i < host->control_count; i++) {
-            if ((host->controls[i].state & SUI_CTRL_DEFAULT) && (host->controls[i].state & SUI_CTRL_PRESSED)
+            if ((host->controls[i].state & SUI_CTRL_PRESSED)
+                && !(host->controls[i].state & (SUI_CTRL_DISABLED | SUI_CTRL_HIDDEN))
                 && host->controls[i].type == SUI_CTRL_BUTTON) {
                 host->controls[i].state &= ~SUI_CTRL_PRESSED;
                 if (host->on_click)
@@ -2135,7 +2150,7 @@ static void sui_ctrl_on_char(SuiControlHost* host, wchar_t ch) {
         sui_ctrl_edit_on_char(host, fc, ch);
     else if (host->controls[fc].type == SUI_CTRL_TEXTVIEW)
         sui_ctrl_textview_on_char(host, fc, ch);
-    else if (host->controls[fc].type == SUI_CTRL_SPINNER)
+    else if ((SUI__HAS_SPINNER && host->controls[fc].type == SUI_CTRL_SPINNER))
         sui_ctrl_spinner_on_char(host, &host->controls[fc], ch);
 }
 
@@ -2148,9 +2163,9 @@ static HCURSOR sui_ctrl_get_cursor(SuiControlHost* host, int mx, int my) {
             case SUI_CTRL_EDIT:
             case SUI_CTRL_TEXTVIEW:
                 return LoadCursorW(NULL, MAKEINTRESOURCEW(32513)); /* IDC_IBEAM */
-            case SUI_CTRL_SHORTCUT_RECORDER:
+            case SUI_CTRL_SHORTCUT_RECORDER: if (!SUI__HAS_SHORTCUT_RECORDER) break;
                 return LoadCursorW(NULL, MAKEINTRESOURCEW(32512)); /* IDC_ARROW */
-            case SUI_CTRL_SPINNER: {
+            case SUI_CTRL_SPINNER: if (!SUI__HAS_SPINNER) break; {
                 /* ibeam only over the text area, not the arrow buttons */
                 int dummy = 0;
                 if (!sui_ctrl_spinner_arrow_hit(&host->controls[hit],
@@ -2217,7 +2232,7 @@ static void sui_ctrl_host_release(SuiControlHost* host) {
      * The union lives in `controls[]` regardless of `control_count`; clear_page
      * may have moved slots out of the live range. */
     for (i = 0; i < SUI_MAX_CONTROLS; i++) {
-        if (host->controls[i].type == SUI_CTRL_SHORTCUT_RECORDER)
+        if ((SUI__HAS_SHORTCUT_RECORDER && host->controls[i].type == SUI_CTRL_SHORTCUT_RECORDER))
             sui_ctrl_shortcut_cancel_recording(host, &host->controls[i], 0);
         sui_ctrl_textview_release(&host->controls[i]);
         sui_ctrl_nav_release(&host->controls[i]);
@@ -2319,7 +2334,7 @@ static int sui_default_msg(SuiControlHost* host, HWND hwnd,
     case WM_CONTEXTMENU:
         if (host->focused_control >= 0 && host->focused_control < host->control_count) {
             SuiControl* c = &host->controls[host->focused_control];
-            if (c->type == SUI_CTRL_SHORTCUT_RECORDER && c->d.shortcut.recording) {
+            if ((SUI__HAS_SHORTCUT_RECORDER && c->type == SUI_CTRL_SHORTCUT_RECORDER) && c->d.shortcut.recording) {
                 *result = 0; return 1;
             }
         }
@@ -2336,6 +2351,7 @@ static int sui_default_msg(SuiControlHost* host, HWND hwnd,
         host->window_has_focus = 1;
         host->caret_visible    = 1;
         SetTimer(hwnd, SUI_CARET_TIMER_ID, 500, NULL);
+        sui_uia_notify_focus_changed(host, -1, host->focused_control);
         *result = 0; return 1;
     case WM_KILLFOCUS:
         sui_ctrl_spinner_stop_repeat(host);

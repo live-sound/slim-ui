@@ -158,10 +158,7 @@ not a single fully static executable.
 | `SUI_NO_CRT`                   | Allocate via `HeapAlloc` instead of `malloc`. Lets the toolkit ship in CRT-free executables.|
 | `SUI_MALLOC(n)` / `SUI_FREE(p)` | Override the allocator. Define **both** before including `slim_ui.h` in the implementation TU. Default: `SUI_NO_CRT` → `HeapAlloc`/`HeapFree`; otherwise `malloc`/`free`. |
 
-Each control can be left out of a build, which removes its `sui_ctrl_add_*` and its code. Define any of these before `slim_ui.h` in the
-implementation translation unit: `SUI_NO_COMBOBOX`, `SUI_NO_TABS`, `SUI_NO_LIST`, `SUI_NO_NAV_LIST`, `SUI_NO_SPINNER`, `SUI_NO_SLIDER`,
-`SUI_NO_COLOR_SWATCH`, `SUI_NO_IMAGE`, `SUI_NO_SHORTCUT_RECORDER`, `SUI_NO_TOOLTIP`, `SUI_NO_SCROLLVIEW`. All of them together take 68 KB
-off a release build. They do not combine with `SUI_FEATURE_DECL`, whose builders call those controls.
+Optional controls can be left out of a build by defining any of these before `slim_ui.h` in the implementation translation unit: `SUI_NO_COMBOBOX`, `SUI_NO_TABS`, `SUI_NO_LIST`, `SUI_NO_NAV_LIST`, `SUI_NO_SPINNER`, `SUI_NO_SLIDER`, `SUI_NO_COLOR_SWATCH`, `SUI_NO_IMAGE`, `SUI_NO_SHORTCUT_RECORDER`, `SUI_NO_TOOLTIP`, `SUI_NO_SCROLLVIEW`. These remove the corresponding constructors and exclude shared drawing, event and UIA paths for the omitted controls. Accessibility for enabled controls is preserved, including text views. The size reduction depends on the build and controls used. These flags do not combine with `SUI_FEATURE_DECL`, whose builders call those controls.
 
 `SUI_FEATURE_VSYNC` is included by `slim_ui.h` near the top so
 `SuiControlHost` can embed a per-window vsync state. Without it, hover
@@ -207,7 +204,9 @@ Tagged union of every control. `state` is a bitmask of `SuiCtrlState`
 flags (`SUI_CTRL_HOVER | SUI_CTRL_PRESSED | SUI_CTRL_FOCUSED |
 SUI_CTRL_DISABLED | SUI_CTRL_HIDDEN | SUI_CTRL_CHECKED | SUI_CTRL_DEFAULT |
 SUI_CTRL_BOLD | SUI_CTRL_ANCHOR_RIGHT | SUI_CTRL_ANCHOR_BOTTOM |
-SUI_CTRL_FLOW`).
+SUI_CTRL_FLOW | SUI_CTRL_LABEL_NO_DRAW`).
+`SUI_CTRL_LABEL_NO_DRAW` lets a host paint a label itself while retaining its accessible text and bounds.
+`SUI_CTRL_TEXT_MAX` defaults to 128; define it before including the header to allow longer control text, consistently across translation units.
 `hover_t` is a 0–1 float driven by the hover animation timer (or vsync
 pump) for smooth color/border transitions. `parent_id` and `z` form the
 container/z-order tree (`-1` = top-level).
@@ -773,7 +772,7 @@ other AT (assistive technology) tools can enumerate controls, query their
 properties, and respond to focus/value changes.
 
 Control properties include enabled and offscreen state. A textview exposes
-its complete buffer as its accessible name, including readonly content.
+its complete buffer as its accessible name, including readonly content. Checkbox controls expose Toggle, editable fields expose Value, and radio buttons expose SelectionItem. Enter activates the focused button, falling back to the default button when focus is elsewhere.
 
 ### Provider architecture
 
@@ -834,7 +833,7 @@ segment so the full runtime ID is stable across host rebuilds as long as
 
 Focus changes fire `UiaRaiseAutomationPropertyChangedEvent` with
 `UIA_HasKeyboardFocusPropertyId` (30008) on both the losing and gaining
-providers whenever `sui_ctrl_set_focus` moves focus. Value-change events
+providers whenever `sui_ctrl_set_focus` moves focus, plus an automation focus-change event for the new control. Checkbox and radio changes publish their checked or selected state; selecting a radio also raises an element-selected event. Value-change events
 for edit, spinner, and slider are planned for a later phase.
 
 ## Layout helpers

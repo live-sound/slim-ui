@@ -153,6 +153,8 @@ static HRESULT sui_uia_resolve_host(SuiUiaHostProviderFull* h,
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* ── Control provider: IUnknown ──────────────────────────────────────────── */
+static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_get_pattern(void* self, int patternId, IUnknown** out);
+
 static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_qi(void* self, REFIID riid, void** out) {
     SuiUiaProvider* p = (SuiUiaProvider*)self;
     if (!out) return E_POINTER;
@@ -167,6 +169,19 @@ static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_qi(void* self, REFIID riid, void**
         InterlockedIncrement(&p->ref_count);
         return S_OK;
     }
+    /* UIA queries the returned IUnknown for the actual pattern interface. */
+#define SUI_UIA_QUERY_PATTERN(name) \
+    if (IsEqualGUID(riid, SUI_IID_REF(SUI_IID_I##name##Provider))) \
+        return sui_uia_ctrl_get_pattern(self, SUI_UIA_##name##PatternId, (IUnknown**)out)
+    SUI_UIA_QUERY_PATTERN(Invoke);
+    SUI_UIA_QUERY_PATTERN(Toggle);
+    SUI_UIA_QUERY_PATTERN(Value);
+    SUI_UIA_QUERY_PATTERN(RangeValue);
+    SUI_UIA_QUERY_PATTERN(ExpandCollapse);
+    SUI_UIA_QUERY_PATTERN(Selection);
+    SUI_UIA_QUERY_PATTERN(SelectionItem);
+    SUI_UIA_QUERY_PATTERN(Scroll);
+#undef SUI_UIA_QUERY_PATTERN
     *out = NULL;
     return E_NOINTERFACE;
 }
@@ -183,15 +198,7 @@ static ULONG STDMETHODCALLTYPE sui_uia_ctrl_release(void* self) {
 
 /* ── Pattern IUnknown (delegates to base provider via offsetof) ──────────── */
 static HRESULT STDMETHODCALLTYPE sui_uia_pat1_qi(void* self, REFIID riid, void** out) {
-    SuiUiaProvider* p = SUI_UIA_FROM_PAT1(self);
-    if (!out) return E_POINTER;
-    if (IsEqualGUID(riid, SUI_IID_REF(IID_IUnknown))) {
-        *out = self;
-        InterlockedIncrement(&p->ref_count);
-        return S_OK;
-    }
-    *out = NULL;
-    return E_NOINTERFACE;
+    return sui_uia_ctrl_qi(SUI_UIA_FROM_PAT1(self), riid, out);
 }
 static ULONG STDMETHODCALLTYPE sui_uia_pat1_addref(void* self) {
     return (ULONG)InterlockedIncrement(&SUI_UIA_FROM_PAT1(self)->ref_count);
@@ -204,15 +211,7 @@ static ULONG STDMETHODCALLTYPE sui_uia_pat1_release(void* self) {
 }
 
 static HRESULT STDMETHODCALLTYPE sui_uia_pat2_qi(void* self, REFIID riid, void** out) {
-    SuiUiaProvider* p = SUI_UIA_FROM_PAT2(self);
-    if (!out) return E_POINTER;
-    if (IsEqualGUID(riid, SUI_IID_REF(IID_IUnknown))) {
-        *out = self;
-        InterlockedIncrement(&p->ref_count);
-        return S_OK;
-    }
-    *out = NULL;
-    return E_NOINTERFACE;
+    return sui_uia_ctrl_qi(SUI_UIA_FROM_PAT2(self), riid, out);
 }
 static ULONG STDMETHODCALLTYPE sui_uia_pat2_addref(void* self) {
     return (ULONG)InterlockedIncrement(&SUI_UIA_FROM_PAT2(self)->ref_count);
@@ -344,7 +343,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_get_property(void* self, int prope
     case SUI_UIA_IsControlElementPropertyId:
     case SUI_UIA_IsContentElementPropertyId:
         out->vt = VT_BOOL;
-        out->boolVal = VARIANT_TRUE;
+        out->boolVal = (c->state & SUI_CTRL_HIDDEN) ? VARIANT_FALSE : VARIANT_TRUE;
         break;
 
     case SUI_UIA_IsEnabledPropertyId:
@@ -391,6 +390,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_toggle(void* self) {
     HRESULT hr = sui_uia_resolve_control(p, &host, &c);
     if (FAILED(hr)) return hr;
     c->state ^= SUI_CTRL_CHECKED;
+    sui_uia_notify_checked_changed(host, p->control_index, !(c->state & SUI_CTRL_CHECKED));
     if (host->on_click) host->on_click(c->id, host->on_click_data);
     if (p->host == host) InvalidateRect(host->hwnd, NULL, FALSE);
     return S_OK;
@@ -412,6 +412,47 @@ static const SuiUiaToggleProviderVtbl sui_uia_toggle_vtbl = {
     sui_uia_toggle, sui_uia_toggle_get_state
 };
 
+/* Radio buttons select one item in their group; selection cannot be cleared. */
+static HRESULT STDMETHODCALLTYPE sui_uia_radio_select(void* self) {
+    SuiUiaProvider* p = SUI_UIA_FROM_PAT1(self);
+    SuiControlHost* host;
+    SuiControl* c;
+    HRESULT hr = sui_uia_resolve_control(p, &host, &c);
+    if (FAILED(hr)) return hr;
+    if ((c->state & SUI_CTRL_DISABLED) || !IsWindowEnabled(host->hwnd))
+        return (HRESULT)0x80040200L; /* UIA_E_ELEMENTNOTENABLED */
+    sui_ctrl_radio_select(host, p->control_index);
+    if (host->on_click) host->on_click(c->id, host->on_click_data);
+    if (p->host == host) InvalidateRect(host->hwnd, NULL, FALSE);
+    return S_OK;
+}
+
+static HRESULT STDMETHODCALLTYPE sui_uia_radio_remove(void* self) {
+    HRESULT hr = sui_uia_resolve_control(SUI_UIA_FROM_PAT1(self), NULL, NULL);
+    return FAILED(hr) ? hr : (HRESULT)0x80131509L;
+}
+
+static HRESULT STDMETHODCALLTYPE sui_uia_radio_selected(void* self, BOOL* out) {
+    int checked;
+    HRESULT hr;
+    if (!out) return E_POINTER;
+    hr = sui_uia_toggle_get_state(self, &checked);
+    if (SUCCEEDED(hr)) *out = checked != 0;
+    return hr;
+}
+
+static HRESULT STDMETHODCALLTYPE sui_uia_radio_container(void* self, void** out) {
+    if (!out) return E_POINTER;
+    *out = NULL; /* The host does not implement ISelectionProvider. */
+    return sui_uia_resolve_control(SUI_UIA_FROM_PAT1(self), NULL, NULL);
+}
+
+static const SuiUiaSelectionItemProviderVtbl sui_uia_radio_vtbl = {
+    sui_uia_pat1_qi, sui_uia_pat1_addref, sui_uia_pat1_release,
+    sui_uia_radio_select, sui_uia_radio_select, sui_uia_radio_remove,
+    sui_uia_radio_selected, sui_uia_radio_container
+};
+
 /* ── IValueProvider (edit, path display) -- pattern slot 1 ───────────────── */
 /* Also used as pattern slot 2 for combobox (read-only value = selected text) */
 static HRESULT STDMETHODCALLTYPE sui_uia_value_set_pat1(void* self, LPCWSTR val) {
@@ -420,7 +461,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_value_set_pat1(void* self, LPCWSTR val)
     SuiControl* c;
     HRESULT hr = sui_uia_resolve_control(p, &host, &c);
     if (FAILED(hr)) return hr;
-    if (c->type == SUI_CTRL_COMBOBOX)
+    if ((SUI__HAS_COMBOBOX && c->type == SUI_CTRL_COMBOBOX))
         return 0x80131509L; /* UIA_E_NOTSUPPORTED */
     if (val) {
         int len;
@@ -455,7 +496,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_value_get_readonly_pat1(void* self, BOO
     if (!out) return E_POINTER;
     hr = sui_uia_resolve_control(p, NULL, &c);
     if (FAILED(hr)) return hr;
-    *out = (c->type == SUI_CTRL_COMBOBOX) ? TRUE : FALSE;
+    *out = ((SUI__HAS_COMBOBOX && c->type == SUI_CTRL_COMBOBOX)) ? TRUE : FALSE;
     return S_OK;
 }
 
@@ -508,11 +549,11 @@ static HRESULT STDMETHODCALLTYPE sui_uia_range_set(void* self, double val) {
     SuiControl* c;
     HRESULT hr = sui_uia_resolve_control(p, &host, &c);
     if (FAILED(hr)) return hr;
-    if (c->type == SUI_CTRL_SLIDER) {
+    if ((SUI__HAS_SLIDER && c->type == SUI_CTRL_SLIDER)) {
         c->d.slider.value = (float)val;
         if (c->d.slider.value < c->d.slider.min) c->d.slider.value = c->d.slider.min;
         if (c->d.slider.value > c->d.slider.max) c->d.slider.value = c->d.slider.max;
-    } else if (c->type == SUI_CTRL_SPINNER) {
+    } else if ((SUI__HAS_SPINNER && c->type == SUI_CTRL_SPINNER)) {
         c->d.spinner.value = (float)val;
         sui_ctrl_spinner_clamp(c);
     }
@@ -527,7 +568,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_range_get_value(void* self, double* out
     if (!out) return E_POINTER;
     hr = sui_uia_resolve_control(p, NULL, &c);
     if (FAILED(hr)) return hr;
-    *out = (c->type == SUI_CTRL_SLIDER) ? (double)c->d.slider.value : (double)c->d.spinner.value;
+    *out = ((SUI__HAS_SLIDER && c->type == SUI_CTRL_SLIDER)) ? (double)c->d.slider.value : (double)c->d.spinner.value;
     return S_OK;
 }
 
@@ -548,7 +589,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_range_get_max(void* self, double* out) 
     if (!out) return E_POINTER;
     hr = sui_uia_resolve_control(p, NULL, &c);
     if (FAILED(hr)) return hr;
-    *out = (c->type == SUI_CTRL_SLIDER) ? (double)c->d.slider.max : (double)c->d.spinner.max;
+    *out = ((SUI__HAS_SLIDER && c->type == SUI_CTRL_SLIDER)) ? (double)c->d.slider.max : (double)c->d.spinner.max;
     return S_OK;
 }
 
@@ -559,7 +600,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_range_get_min(void* self, double* out) 
     if (!out) return E_POINTER;
     hr = sui_uia_resolve_control(p, NULL, &c);
     if (FAILED(hr)) return hr;
-    *out = (c->type == SUI_CTRL_SLIDER) ? (double)c->d.slider.min : (double)c->d.spinner.min;
+    *out = ((SUI__HAS_SLIDER && c->type == SUI_CTRL_SLIDER)) ? (double)c->d.slider.min : (double)c->d.spinner.min;
     return S_OK;
 }
 
@@ -571,7 +612,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_range_get_large_change(void* self, doub
     if (!out) return E_POINTER;
     hr = sui_uia_resolve_control(p, NULL, &c);
     if (FAILED(hr)) return hr;
-    if (c->type == SUI_CTRL_SLIDER) {
+    if ((SUI__HAS_SLIDER && c->type == SUI_CTRL_SLIDER)) {
         step = (c->d.slider.step > 0.0f) ? (double)c->d.slider.step
             : (double)(c->d.slider.max - c->d.slider.min) / 10.0;
     } else {
@@ -588,7 +629,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_range_get_small_change(void* self, doub
     if (!out) return E_POINTER;
     hr = sui_uia_resolve_control(p, NULL, &c);
     if (FAILED(hr)) return hr;
-    if (c->type == SUI_CTRL_SLIDER)
+    if ((SUI__HAS_SLIDER && c->type == SUI_CTRL_SLIDER))
         *out = (c->d.slider.step > 0.0f) ? (double)c->d.slider.step
             : (double)(c->d.slider.max - c->d.slider.min) / 10.0;
     else
@@ -825,7 +866,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_get_pattern(void* self, int patter
 
     switch (patternId) {
     case SUI_UIA_InvokePatternId:
-        if (c->type == SUI_CTRL_BUTTON || c->type == SUI_CTRL_COLOR_SWATCH) {
+        if (c->type == SUI_CTRL_BUTTON || (SUI__HAS_COLOR_SWATCH && c->type == SUI_CTRL_COLOR_SWATCH)) {
             *out = (IUnknown*)&p->lpPattern1Vtbl;
             InterlockedIncrement(&p->ref_count);
             return S_OK;
@@ -840,13 +881,21 @@ static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_get_pattern(void* self, int patter
         }
         break;
 
+    case SUI_UIA_SelectionItemPatternId:
+        if (c->type == SUI_CTRL_RADIO) {
+            *out = (IUnknown*)&p->lpPattern1Vtbl;
+            InterlockedIncrement(&p->ref_count);
+            return S_OK;
+        }
+        break;
+
     case SUI_UIA_ValuePatternId:
         if (c->type == SUI_CTRL_EDIT) {
             *out = (IUnknown*)&p->lpPattern1Vtbl;
             InterlockedIncrement(&p->ref_count);
             return S_OK;
         }
-        if (c->type == SUI_CTRL_COMBOBOX) {
+        if ((SUI__HAS_COMBOBOX && c->type == SUI_CTRL_COMBOBOX)) {
             /* Combobox: ExpandCollapse is slot 1, Value is slot 2 */
             *out = (IUnknown*)&p->lpPattern2Vtbl;
             InterlockedIncrement(&p->ref_count);
@@ -855,7 +904,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_get_pattern(void* self, int patter
         break;
 
     case SUI_UIA_RangeValuePatternId:
-        if (c->type == SUI_CTRL_SLIDER || c->type == SUI_CTRL_SPINNER) {
+        if ((SUI__HAS_SLIDER && c->type == SUI_CTRL_SLIDER) || (SUI__HAS_SPINNER && c->type == SUI_CTRL_SPINNER)) {
             *out = (IUnknown*)&p->lpPattern1Vtbl;
             InterlockedIncrement(&p->ref_count);
             return S_OK;
@@ -863,7 +912,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_get_pattern(void* self, int patter
         break;
 
     case SUI_UIA_ExpandCollapsePatternId:
-        if (c->type == SUI_CTRL_COMBOBOX) {
+        if ((SUI__HAS_COMBOBOX && c->type == SUI_CTRL_COMBOBOX)) {
             *out = (IUnknown*)&p->lpPattern1Vtbl;
             InterlockedIncrement(&p->ref_count);
             return S_OK;
@@ -871,7 +920,7 @@ static HRESULT STDMETHODCALLTYPE sui_uia_ctrl_get_pattern(void* self, int patter
         break;
 
     case SUI_UIA_SelectionPatternId:
-        if (c->type == SUI_CTRL_NAV_LIST || c->type == SUI_CTRL_TABS) {
+        if ((SUI__HAS_NAV_LIST && c->type == SUI_CTRL_NAV_LIST) || (SUI__HAS_TABS && c->type == SUI_CTRL_TABS)) {
             *out = (IUnknown*)&p->lpPattern1Vtbl;
             InterlockedIncrement(&p->ref_count);
             return S_OK;
@@ -1380,16 +1429,52 @@ static void sui_uia_disconnect_host_provider(SuiControlHost* host) {
 }
 
 /* Fire HasKeyboardFocus property-changed events for old and new focus indices. */
+static void sui_uia_raise_event(void* provider, int event_id) {
+    typedef HRESULT (WINAPI *RaiseEventFn)(void*, int);
+    RaiseEventFn fn = (RaiseEventFn)GetProcAddress(GetModuleHandleW(L"uiautomationcore.dll"), "UiaRaiseAutomationEvent");
+    if (fn) fn(provider, event_id);
+}
+
+static void sui_uia_notify_checked_changed(SuiControlHost* host, int idx, int old_checked) {
+    SuiControl* c = &host->controls[idx];
+    int checked = (c->state & SUI_CTRL_CHECKED) != 0;
+    SuiUiaRaisePropChangedFn fn;
+    VARIANT before, after;
+    if (old_checked == checked || !host->uia_providers[idx]) return;
+    fn = sui_uia_get_raise_prop_fn();
+    if (!fn) return;
+    sui_uia_variant_init(&before);
+    sui_uia_variant_init(&after);
+    if (c->type == SUI_CTRL_RADIO) {
+        before.vt = after.vt = VT_BOOL;
+        before.boolVal = old_checked ? VARIANT_TRUE : VARIANT_FALSE;
+        after.boolVal = checked ? VARIANT_TRUE : VARIANT_FALSE;
+        fn(host->uia_providers[idx], 30079 /* SelectionItemIsSelected */, before, after);
+        if (checked) sui_uia_raise_event(host->uia_providers[idx], 20012 /* ElementSelected */);
+    } else {
+        before.vt = after.vt = VT_I4;
+        before.lVal = old_checked; after.lVal = checked;
+        fn(host->uia_providers[idx], 30086 /* ToggleToggleState */, before, after);
+    }
+}
+
 static void sui_uia_notify_focus_changed(SuiControlHost* host, int old_idx, int new_idx) {
-    SuiUiaRaisePropChangedFn fn = sui_uia_get_raise_prop_fn();
+    SuiUiaRaisePropChangedFn fn;
     VARIANT vfalse, vtrue;
+    if (!host->uia_host_provider) return;
+    fn = sui_uia_get_raise_prop_fn();
     if (!fn) return;
     sui_uia_variant_init(&vfalse); vfalse.vt = VT_BOOL; vfalse.boolVal = VARIANT_FALSE;
     sui_uia_variant_init(&vtrue);  vtrue.vt  = VT_BOOL; vtrue.boolVal  = VARIANT_TRUE;
     if (old_idx >= 0 && old_idx < SUI_MAX_CONTROLS && host->uia_providers[old_idx])
         fn(host->uia_providers[old_idx], SUI_UIA_HasKeyboardFocusPropertyId, vtrue, vfalse);
-    if (new_idx >= 0 && new_idx < SUI_MAX_CONTROLS && host->uia_providers[new_idx])
+    if (new_idx >= 0 && new_idx < host->control_count) {
+        if (!host->uia_providers[new_idx])
+            host->uia_providers[new_idx] = sui_uia_create_control_provider(host, new_idx);
+        if (!host->uia_providers[new_idx]) return;
         fn(host->uia_providers[new_idx], SUI_UIA_HasKeyboardFocusPropertyId, vfalse, vtrue);
+        sui_uia_raise_event(host->uia_providers[new_idx], 20005 /* AutomationFocusChanged */);
+    }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1408,21 +1493,30 @@ static void sui_uia_set_pattern_vtbls(SuiUiaProvider* p, SuiCtrlType type) {
     case SUI_CTRL_CHECKBOX:
         p->lpPattern1Vtbl = &sui_uia_toggle_vtbl;
         break;
+    case SUI_CTRL_RADIO:
+        p->lpPattern1Vtbl = &sui_uia_radio_vtbl;
+        break;
     case SUI_CTRL_EDIT:
         p->lpPattern1Vtbl = &sui_uia_value_vtbl_pat1;
         break;
+#if SUI__HAS_COMBOBOX
     case SUI_CTRL_COMBOBOX:
         p->lpPattern1Vtbl = &sui_uia_expand_vtbl;
         p->lpPattern2Vtbl = &sui_uia_value_vtbl_pat2;
         break;
+#endif
+#if SUI__HAS_SLIDER || SUI__HAS_SPINNER
     case SUI_CTRL_SLIDER:
     case SUI_CTRL_SPINNER:
         p->lpPattern1Vtbl = &sui_uia_range_vtbl;
         break;
+#endif
+#if SUI__HAS_NAV_LIST || SUI__HAS_TABS
     case SUI_CTRL_NAV_LIST:
     case SUI_CTRL_TABS:
         p->lpPattern1Vtbl = &sui_uia_selection_vtbl;
         break;
+#endif
     case SUI_CTRL_TEXTVIEW:
         p->lpPattern1Vtbl = &sui_uia_scroll_vtbl;
         break;

@@ -15,7 +15,7 @@ static void sui_ctrl_draw_label(SuiControlHost* host, SuiControl* ctrl) {
      * back positive below). */
     float font_size = ctrl->font_size != 0.0f ? (ctrl->font_size < 0.0f ? -ctrl->font_size : ctrl->font_size) : host->renderer->font_size;
     int   bold      = (ctrl->state & SUI_CTRL_BOLD) ? 1 : 0;
-    if (ctrl->state & SUI_CTRL_HIDDEN) return;
+    if (ctrl->state & (SUI_CTRL_HIDDEN | SUI_CTRL_LABEL_NO_DRAW)) return;
     sui_renderer_draw_text_middle_singleline_ex(host->renderer, ctrl->text,
         ctrl->x, ctrl->y, ctrl->w, ctrl->h,
         (ctrl->state & SUI_CTRL_DISABLED)
