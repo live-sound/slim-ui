@@ -38,7 +38,9 @@
 /* Maximum wchar_t buffer size for SuiControl::text, including null terminator.
  * Fits labels, button captions, combo display text, and short edit fields.
  * Reduces SuiControl hot-path size: 64 controls × (256→128) = saves 16 KB. */
+#ifndef SUI_CTRL_TEXT_MAX
 #define SUI_CTRL_TEXT_MAX 128
+#endif
 #define SUI_TOOLTIP_TEXT_MAX 512
 
 /* Named-parameter structs for slider and spinner constructors.
@@ -263,7 +265,8 @@ typedef enum SuiCtrlState {
      * the min-size scan reports the floor. */
     SUI_CTRL_FLOW          = 4096,
     SUI_CTRL_SEMIBOLD      = 8192,
-    SUI_CTRL_MEDIUM        = 16384
+    SUI_CTRL_MEDIUM        = 16384,
+    SUI_CTRL_LABEL_NO_DRAW       = 32768 /* host paints this control; keep layout and accessibility */
 } SuiCtrlState;
 
 #define SUI_MAX_CONTROLS         64

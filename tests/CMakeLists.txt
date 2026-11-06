@@ -15,7 +15,7 @@ add_executable(sui_omit_tests sui_omit_tests.c)
 target_include_directories(sui_omit_tests PRIVATE ../include .)
 target_compile_definitions(sui_omit_tests PRIVATE UNICODE _UNICODE WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
 target_compile_options(sui_omit_tests PRIVATE $<$<C_COMPILER_ID:MSVC>:/utf-8> $<$<C_COMPILER_ID:MSVC>:/W3>)
-target_link_libraries(sui_omit_tests PRIVATE d2d1 dwrite user32 gdi32 ole32 windowscodecs)
+target_link_libraries(sui_omit_tests PRIVATE d2d1 dwrite user32 gdi32 ole32 oleaut32 uuid windowscodecs)
 add_test(NAME sui_omit_tests COMMAND sui_omit_tests)
 
 add_executable(sui_vsync_tests sui_vsync_tests.c sui_vsync_other.c)

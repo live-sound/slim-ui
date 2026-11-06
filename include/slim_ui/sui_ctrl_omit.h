@@ -3,6 +3,63 @@
  * shared code in sui_controls.h compiling, and the compiler removes them with the branches that call them.
  * Included from slim_ui.h under #ifdef SUI_IMPLEMENTATION — no include guard.
  */
+/* Constant guards also remove shared event and UIA paths for omitted controls. */
+#ifdef SUI_NO_COMBOBOX
+#define SUI__HAS_COMBOBOX 0
+#else
+#define SUI__HAS_COMBOBOX 1
+#endif
+#ifdef SUI_NO_TABS
+#define SUI__HAS_TABS 0
+#else
+#define SUI__HAS_TABS 1
+#endif
+#ifdef SUI_NO_LIST
+#define SUI__HAS_LIST 0
+#else
+#define SUI__HAS_LIST 1
+#endif
+#ifdef SUI_NO_NAV_LIST
+#define SUI__HAS_NAV_LIST 0
+#else
+#define SUI__HAS_NAV_LIST 1
+#endif
+#ifdef SUI_NO_SPINNER
+#define SUI__HAS_SPINNER 0
+#else
+#define SUI__HAS_SPINNER 1
+#endif
+#ifdef SUI_NO_SLIDER
+#define SUI__HAS_SLIDER 0
+#else
+#define SUI__HAS_SLIDER 1
+#endif
+#ifdef SUI_NO_COLOR_SWATCH
+#define SUI__HAS_COLOR_SWATCH 0
+#else
+#define SUI__HAS_COLOR_SWATCH 1
+#endif
+#ifdef SUI_NO_IMAGE
+#define SUI__HAS_IMAGE 0
+#else
+#define SUI__HAS_IMAGE 1
+#endif
+#ifdef SUI_NO_SHORTCUT_RECORDER
+#define SUI__HAS_SHORTCUT_RECORDER 0
+#else
+#define SUI__HAS_SHORTCUT_RECORDER 1
+#endif
+#ifdef SUI_NO_TOOLTIP
+#define SUI__HAS_TOOLTIP 0
+#else
+#define SUI__HAS_TOOLTIP 1
+#endif
+#ifdef SUI_NO_SCROLLVIEW
+#define SUI__HAS_SCROLLVIEW 0
+#else
+#define SUI__HAS_SCROLLVIEW 1
+#endif
+
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4100) /* the stubs ignore their parameters */

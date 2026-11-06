@@ -15,6 +15,7 @@ static int sui_ctrl_add_radio(SuiControlHost* host, int id, float x, float y, fl
 }
 
 /* ---- Select (uncheck all in group, check this one) ----------------------- */
+static void sui_uia_notify_checked_changed(SuiControlHost* host, int idx, int old_checked);
 
 static void sui_ctrl_radio_select(SuiControlHost* host, int idx) {
     int i, gid;
@@ -22,10 +23,13 @@ static void sui_ctrl_radio_select(SuiControlHost* host, int idx) {
     gid = host->controls[idx].d.radio.group_id;
     for (i = 0; i < host->control_count; i++) {
         if (host->controls[i].type == SUI_CTRL_RADIO &&
-            host->controls[i].d.radio.group_id == gid)
-            host->controls[i].state &= ~SUI_CTRL_CHECKED;
+            host->controls[i].d.radio.group_id == gid) {
+            int old_checked = (host->controls[i].state & SUI_CTRL_CHECKED) != 0;
+            if (i == idx) host->controls[i].state |= SUI_CTRL_CHECKED;
+            else host->controls[i].state &= ~SUI_CTRL_CHECKED;
+            sui_uia_notify_checked_changed(host, i, old_checked);
+        }
     }
-    host->controls[idx].state |= SUI_CTRL_CHECKED;
 }
 
 /* ---- Navigate within group (dir: -1 prev, +1 next), returns new index --- */
