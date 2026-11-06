@@ -27,6 +27,7 @@
 /* ---- IDs ----------------------------------------------------------------- */
 enum {
     ID_SIDEBAR     = 80,
+    ID_TITLE_SEPARATOR = 81,
     ID_SHADER_IMAGE = 94,
     ID_SHADER_PAUSE = 95,
     ID_SHADER_SPEED = 96,
@@ -350,7 +351,8 @@ static void BuildSectionBasic(TestbedData* d, float cx, float cy, float cw, floa
     }
 
     /* Slider — drives the progress bar above */
-    EmitLabel(h, &L, L"Slider — drag to update the progress bar");
+    sui_ctrl_add_label(h, -1, L.x, L.y, L.w, L.lh, L"Slider — drag to update the progress bar");
+    L.y += L.lh + L.lbl_gap;
     sui_ctrl_add_slider_p(h, ID_SLIDER, L.x, L.y, L.w, L.ch,
         SuiSliderParams{ .min=0.0f, .max=100.0f, .value=40.0f, .step=1.0f });
     AdvanceRow(&L, L.ch);
@@ -1031,6 +1033,8 @@ static void BuildControls(TestbedData* d) {
     /* ---- Gallery identity and inset navigation ---- */
     sui_ctrl_add_container(h, ID_SIDEBAR, 0.0f, 0.0f, nav_w, H);
     sui_last_style_color(h, SUI_STYLE_BG_COLOR, d->scheme.nav_bg);
+    sui_ctrl_add_container(h, ID_TITLE_SEPARATOR, 0.0f, 0.0f, W, 1.0f);
+    sui_last_style_color(h, SUI_STYLE_BG_COLOR, d->scheme.btn_area_border);
     int brand = sui_ctrl_add_label(h, -1, 22.0f * s, 24.0f * s, nav_w - 44.0f * s, 32.0f * s, L"Slim UI");
     if (brand >= 0) {
         h->controls[brand].font_size = SUI_TITLE_PT;

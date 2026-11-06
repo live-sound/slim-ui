@@ -6,6 +6,7 @@ return SlimApplication.Run("Slim UI Demo", 960, 720, demo.Build);
 internal sealed class SlimUiDemo
 {
     private const int IdSidebar = 80;
+    private const int IdTitleSeparator = 81;
     private const int IdShaderImage = 94;
     private const int IdShaderPause = 95;
     private const int IdShaderSpeed = 96;
@@ -88,6 +89,7 @@ internal sealed class SlimUiDemo
         _ => 0xFF4CC2FF,
     };
     private uint SidebarColor => _schemeName == "light" ? 0xFFF3F3F3 : 0xFF2A2A2A;
+    private uint SeparatorColor => _schemeName == "light" ? 0xFFDFDFDF : 0xFF3D3D3D;
     private uint SecondaryText => _schemeName == "light" ? 0xFF444444 : 0xFF999999;
 
     public void Build(SlimUiBuilder ui)
@@ -108,6 +110,8 @@ internal sealed class SlimUiDemo
         float barY = h - barH - pad;
 
         ui.ContainerAt(IdSidebar, 0, 0, navW, h).StyleColor(SlimStyleColor.Background, SidebarColor);
+        // One physical pixel keeps the title-bar separator crisp at any DPI.
+        ui.ContainerAt(IdTitleSeparator, 0, 0, w, 1 / ui.DpiScale).StyleColor(SlimStyleColor.Background, SeparatorColor);
         ui.TitleAt(22, 24, navW - 44, 32, "Slim UI");
         ui.LabelAt(22, 60, navW - 44, lh, "Control gallery");
         ui.LastStyleColor(SlimStyleColor.Text, SecondaryText);
@@ -195,7 +199,8 @@ internal sealed class SlimUiDemo
         SlimControl progress = ui.ProgressAt(IdProgress, layout.X, layout.Y, layout.W, barH, 0, 100, 40);
         AdvanceRow(ref layout, barH);
 
-        EmitLabel(ui, ref layout, "Slider — drag to update the progress bar");
+        ui.LabelAt(layout.X, layout.Y, layout.W, layout.LabelHeight, "Slider — drag to update the progress bar");
+        layout.Y += layout.LabelHeight + layout.LabelGap;
         SlimControl slider = default;
         slider = ui.SliderAt(IdSlider, layout.X, layout.Y, layout.W, layout.ControlHeight, 0, 100, 40, onChanged: () =>
         {

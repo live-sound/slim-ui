@@ -215,8 +215,8 @@ See the [API reference](docs/reference.md) for control options, layout and custo
 The same text field can keep its normal editing behavior and gain a glowing border. A custom paint callback changes how it draws. The demo pairs that effect with an animated night sky behind the logo.
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/shader-dark.gif">
-  <img src="docs/shader-light.gif" width="486" alt="The demo's Shader page in motion: the logo on a slow night sky with warm light running along its swoosh, and a text field with color flowing around its border">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/shader-dark.webp">
+  <img src="docs/shader-light.webp" width="480" alt="The demo's Shader page in motion: the logo on a slow night sky with warm light running along its swoosh, and a text field with color flowing around its border">
 </picture>
 
 Adapt the [night sky](demo/shader_dusk.hlsl) or [glow](demo/shader_glow.hlsl) shader, starting with `PaintWithShader` in [`demo/main.cpp`](demo/main.cpp). The demo's [Direct2D effect](demo/shader_effect.cpp) supplies the shader integration.
