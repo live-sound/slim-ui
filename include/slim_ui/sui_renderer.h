@@ -40,6 +40,7 @@ static int sui__title_style(const SuiRenderer* r) {
 static HRESULT sui__text_layout(IDWriteFactory* dw, const wchar_t* str, UINT32 length, IDWriteTextFormat* fmt, float w, float h, IDWriteTextLayout** out) {
     return dw->lpVtbl->CreateGdiCompatibleTextLayout(dw, str, length, fmt, w, h, 1.0f, NULL, TRUE, out);
 }
+#include "sui_prepared_text.h"
 
 static void sui__apply_text_style(const SuiRenderer* r, ID2D1RenderTarget* rt) {
     rt->lpVtbl->SetTextAntialiasMode(rt, D2D1_TEXT_ANTIALIAS_MODE_GRAYSCALE);
@@ -125,6 +126,9 @@ static int sui__popup_renderer_init(SuiRenderer* r, HWND hwnd) {
 }
 
 static void sui_renderer_release(SuiRenderer* r) {
+#ifdef SUI_FEATURE_CUSTOM_CONTROLS
+    sui__prepared_text_release(r);
+#endif
     if (r->scratch_brush) { ((ID2D1SolidColorBrush*)r->scratch_brush)->lpVtbl->Base.Base.Release((IUnknown*)r->scratch_brush); r->scratch_brush=NULL; }
     if (r->font_title) { ((IDWriteTextFormat*)r->font_title)->lpVtbl->Release((IDWriteTextFormat*)r->font_title); r->font_title=NULL; }
     if (r->font_bold) { ((IDWriteTextFormat*)r->font_bold)->lpVtbl->Release((IDWriteTextFormat*)r->font_bold); r->font_bold=NULL; }
@@ -178,9 +182,15 @@ static void sui_renderer_end(SuiRenderer* r) {
       if (hr == (HRESULT)0x8899000C) { /* D2DERR_RECREATE_TARGET */
           HWND hw = r->hwnd;
           SuiTypography saved_typo = r->typography;
+#ifdef SUI_FEATURE_CUSTOM_CONTROLS
+          int prepared = r->prepared_text && !r->prepared_text->disabled;
+#endif
           sui_renderer_release(r);
           sui_renderer_init(r, hw);
           sui_renderer_apply_typography(r, &saved_typo);
+#ifdef SUI_FEATURE_CUSTOM_CONTROLS
+          if (prepared && !sui__prepared_text_begin(r, 1)) PostMessageW(hw, WM_CLOSE, 0, 0);
+#endif
       }
     }
 }
@@ -206,6 +216,9 @@ static void sui__renderer_rebuild_formats(SuiRenderer* r) {
 
     dw = (IDWriteFactory*)r->dwrite_factory;
     if (!dw) return;
+#ifdef SUI_FEATURE_CUSTOM_CONTROLS
+    sui__prepared_text_clear(r);
+#endif
 
     if (r->font_normal) { ((IDWriteTextFormat*)r->font_normal)->lpVtbl->Release((IDWriteTextFormat*)r->font_normal); r->font_normal=NULL; }
     if (r->font_bold)   { ((IDWriteTextFormat*)r->font_bold)->lpVtbl->Release((IDWriteTextFormat*)r->font_bold);   r->font_bold=NULL; }
@@ -335,6 +348,7 @@ static IDWriteTextFormat *sui__resolve_fmt(SuiRenderer *r,
     IDWriteTextFormat *fmt;
     void *displaced;
     if (!dw) return NULL;
+    if (r->prepared_text && !r->prepared_text->disabled) return sui__prepared_format(r, family, size_dip, weight, italic, bold_title);
     fmt = (IDWriteTextFormat *)sui__fmt_cache_lookup(&r->format_cache,
                                                       family, size_dip,
                                                       weight, italic, bold_title);
@@ -382,7 +396,7 @@ static IDWriteTextFormat *sui__resolve_text_fmt_ex(SuiRenderer *r, int bold, flo
 
 static void sui_renderer_draw_text(SuiRenderer* r, const wchar_t* str, float x, float y, float w, float h,
                                   uint32_t color, int bold, float size) {
-    ID2D1RenderTarget* rt; ID2D1SolidColorBrush* br; D2D1_RECT_F rc;
+    ID2D1RenderTarget* rt; ID2D1SolidColorBrush* br;
     IDWriteTextFormat* fmt; int custom;
     if (!r->render_target || !str) return;
     rt = (ID2D1RenderTarget*)r->render_target;
@@ -402,25 +416,31 @@ static void sui_renderer_draw_text(SuiRenderer* r, const wchar_t* str, float x, 
         fmt = bold ? (IDWriteTextFormat*)r->font_bold : (IDWriteTextFormat*)r->font_normal;
     }
     if (fmt) {
-        rc.left=x; rc.top=y; rc.right=x+w; rc.bottom=y+h;
-        rt->lpVtbl->DrawText(rt, str, (UINT32)wcslen(str), fmt, &rc, (ID2D1Brush*)br,
-            D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_GDI_NATURAL);
+        IDWriteTextLayout* layout = NULL;
+        if (SUCCEEDED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, 0, &layout)) && layout) {
+            D2D1_POINT_2F origin = {x, y};
+            rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, D2D1_DRAW_TEXT_OPTIONS_NONE);
+            layout->lpVtbl->Release(layout);
+        }
         /* fmt is cache-owned when custom — do not Release */
     }
 }
 
 static void sui_renderer_draw_text_ex(SuiRenderer* r, const wchar_t* str, float x, float y, float w, float h,
                                       uint32_t color, int bold, float size, const wchar_t* family) {
-    ID2D1RenderTarget* rt; IDWriteTextFormat* fmt; ID2D1SolidColorBrush* br; D2D1_RECT_F rc;
+    ID2D1RenderTarget* rt; IDWriteTextFormat* fmt; ID2D1SolidColorBrush* br;
     if (!r->render_target || !str) return;
     rt = (ID2D1RenderTarget*)r->render_target;
     br = sui__brush(r, color, 1.0f);
     if (!br) return;
     fmt = sui__resolve_text_fmt_ex(r, bold, size, family, NULL);
     if (fmt) {
-        rc.left=x; rc.top=y; rc.right=x+w; rc.bottom=y+h;
-        rt->lpVtbl->DrawText(rt, str, (UINT32)wcslen(str), fmt, &rc, (ID2D1Brush*)br,
-            D2D1_DRAW_TEXT_OPTIONS_NONE, DWRITE_MEASURING_MODE_GDI_NATURAL);
+        IDWriteTextLayout* layout = NULL;
+        if (SUCCEEDED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, 0, &layout)) && layout) {
+            D2D1_POINT_2F origin = {x, y};
+            rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, D2D1_DRAW_TEXT_OPTIONS_NONE);
+            layout->lpVtbl->Release(layout);
+        }
     }
 }
 
@@ -444,7 +464,7 @@ static float sui_renderer_measure_text_height(SuiRenderer* r, const wchar_t* str
         fmt = bold ? (IDWriteTextFormat*)r->font_bold : (IDWriteTextFormat*)r->font_normal;
     }
     if (!fmt) return 0;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, 10000.0f, &layout)))
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, 10000.0f, 0, &layout)))
         return 0;
     h = 0;
     memset(&metrics, 0, sizeof(metrics));
@@ -462,7 +482,7 @@ static float sui_renderer_measure_text_height_ex(SuiRenderer* r, const wchar_t* 
     dw = (IDWriteFactory*)r->dwrite_factory;
     fmt = sui__resolve_text_fmt_ex(r, bold, size, family, NULL);
     if (!fmt) return 0;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, 10000.0f, &layout)))
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, 10000.0f, 0, &layout)))
         return 0;
     h = 0;
     memset(&metrics, 0, sizeof(metrics));
@@ -491,7 +511,7 @@ static float sui_renderer_measure_text_width(SuiRenderer* r, const wchar_t* str,
         fmt = bold ? (IDWriteTextFormat*)r->font_bold : (IDWriteTextFormat*)r->font_normal;
     }
     if (!fmt) return 0;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, 10000.0f, 10000.0f, &layout)))
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, 10000.0f, 10000.0f, 0, &layout)))
         return 0;
     w = 0;
     memset(&metrics, 0, sizeof(metrics));
@@ -509,7 +529,7 @@ static float sui_renderer_measure_text_width_ex(SuiRenderer* r, const wchar_t* s
     dw = (IDWriteFactory*)r->dwrite_factory;
     fmt = sui__resolve_text_fmt_ex(r, bold, size, family, NULL);
     if (!fmt) return 0;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, 10000.0f, 10000.0f, &layout)))
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, 10000.0f, 10000.0f, 0, &layout)))
         return 0;
     w = 0;
     memset(&metrics, 0, sizeof(metrics));
@@ -530,7 +550,7 @@ static float sui_renderer_measure_text_width_weight_ex(SuiRenderer* r, const wch
     use_family = (family && family[0]) ? family : r->typography.body.family;
     fmt = sui__resolve_fmt(r, use_family, cfs, weight, sui__body_style(r), 0);
     if (!fmt) return 0;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, 10000.0f, 10000.0f, &layout)))
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, 10000.0f, 10000.0f, 0, &layout)))
         return 0;
     w = 0;
     memset(&metrics, 0, sizeof(metrics));
@@ -565,10 +585,8 @@ static void sui_renderer_draw_text_centered(SuiRenderer* r, const wchar_t* str,
         cfs = r->typography.body.size_pt * dpi / 72.0f;
         if (!fmt) return;
     }
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_CENTER | SUI_TEXT_MIDDLE, &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, DWRITE_TEXT_ALIGNMENT_CENTER);
-    layout->lpVtbl->SetParagraphAlignment(layout, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     /* Nudge up slightly — DWrite's vertical center includes descenders, looks low visually */
     origin.x = x; origin.y = y - cfs * 0.06f;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
@@ -590,10 +608,8 @@ static void sui_renderer_draw_text_centered_ex(SuiRenderer* r, const wchar_t* st
     if (!br) return;
     fmt = sui__resolve_text_fmt_ex(r, bold, size, family, &cfs);
     if (!fmt) return;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_CENTER | SUI_TEXT_MIDDLE, &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, DWRITE_TEXT_ALIGNMENT_CENTER);
-    layout->lpVtbl->SetParagraphAlignment(layout, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     origin.x = x; origin.y = y - cfs * 0.06f;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
     layout->lpVtbl->Release(layout);
@@ -627,10 +643,8 @@ static void sui_renderer_draw_text_middle(SuiRenderer* r, const wchar_t* str,
         cfs = r->typography.body.size_pt * dpi / 72.0f;
         if (!fmt) return;
     }
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_MIDDLE, &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, 0);
-    layout->lpVtbl->SetParagraphAlignment(layout, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     origin.x = x; origin.y = y - cfs * 0.04f;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
     layout->lpVtbl->Release(layout);
@@ -651,10 +665,8 @@ static void sui_renderer_draw_text_middle_ex(SuiRenderer* r, const wchar_t* str,
     if (!br) return;
     fmt = sui__resolve_text_fmt_ex(r, bold, size, family, &cfs);
     if (!fmt) return;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_MIDDLE, &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, 0);
-    layout->lpVtbl->SetParagraphAlignment(layout, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     origin.x = x; origin.y = y - cfs * 0.04f;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
     layout->lpVtbl->Release(layout);
@@ -678,10 +690,8 @@ static void sui_renderer_draw_text_middle_weight_ex(SuiRenderer* r, const wchar_
     use_family = (family && family[0]) ? family : r->typography.body.family;
     fmt = sui__resolve_fmt(r, use_family, cfs, weight, sui__body_style(r), 0);
     if (!fmt) return;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_MIDDLE, &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, 0);
-    layout->lpVtbl->SetParagraphAlignment(layout, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     origin.x = x; origin.y = y - cfs * 0.04f;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
     layout->lpVtbl->Release(layout);
@@ -737,9 +747,7 @@ static void sui_renderer_draw_text_singleline_tail_ellipsis_weight_alpha_ex(
     IDWriteFactory* dw;
     IDWriteTextFormat* fmt;
     IDWriteTextLayout* layout;
-    IDWriteInlineObject* ellipsis = NULL;
     ID2D1SolidColorBrush* br;
-    DWRITE_TRIMMING trimming;
     D2D1_POINT_2F origin;
     float dpi, cfs;
     const wchar_t* use_family;
@@ -754,21 +762,11 @@ static void sui_renderer_draw_text_singleline_tail_ellipsis_weight_alpha_ex(
     use_family = (family && family[0]) ? family : r->typography.body.family;
     fmt = sui__resolve_fmt(r, use_family, cfs, weight, sui__body_style(r), 0);
     if (!fmt) return;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_NO_WRAP | SUI_TEXT_ELLIPSIS | (middle ? SUI_TEXT_MIDDLE : 0), &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, 0);
-    layout->lpVtbl->SetParagraphAlignment(layout,
-        middle ? DWRITE_PARAGRAPH_ALIGNMENT_CENTER : 0);
-    layout->lpVtbl->SetWordWrapping(layout, DWRITE_WORD_WRAPPING_NO_WRAP);
-    trimming.granularity = DWRITE_TRIMMING_GRANULARITY_CHARACTER;
-    trimming.delimiter = 0;
-    trimming.delimiterCount = 0;
-    if (SUCCEEDED(dw->lpVtbl->CreateEllipsisTrimmingSign(dw, fmt, &ellipsis)) && ellipsis)
-        layout->lpVtbl->SetTrimming(layout, &trimming, ellipsis);
     origin.x = x;
     origin.y = middle ? y - cfs * 0.04f : y;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
-    if (ellipsis) ellipsis->lpVtbl->Release(ellipsis);
     layout->lpVtbl->Release(layout);
 }
 
@@ -798,7 +796,7 @@ static void sui_renderer_draw_line_thick(SuiRenderer* r, float x1, float y1, flo
  * A shape is path geometry at the origin in the renderer's shape cache (SuiShapeCache), built on first use and drawn under a
  * translation, so a shape seen again builds nothing; Direct2D's own rounded rect draws what the factory cannot build, and every
  * rounded rect of a build without the C runtime (SUI_NO_CRT: the shared path needs its math). */
-enum { SUI__SHAPE_FILL, SUI__SHAPE_BORDER, SUI__SHAPE_INNER_RING, SUI__SHAPE_OUTSIDE };
+enum { SUI__SHAPE_FILL, SUI__SHAPE_BORDER, SUI__SHAPE_INNER_RING, SUI__SHAPE_OUTSIDE, SUI__SHAPE_ELLIPSE };
 /* A rounded rect's radius: clamped to half the shorter side, 0 when it is not positive. */
 static float sui__round_radius(float w, float h, float radius) {
     const float half = 0.5f * (w < h ? w : h);
@@ -874,7 +872,13 @@ static ID2D1PathGeometry* sui__shape(SuiRenderer* r, float w, float h, float rad
         }
         if (!e->geometry ? victim->geometry != NULL : (victim->geometry && e->tick < victim->tick)) victim = e;
     }
-    made = sui__make_shape((ID2D1Factory*)r->d2d_factory, 0, 0, w, h, radius, ring, kind);
+    if (kind == SUI__SHAPE_ELLIPSE) {
+        ID2D1EllipseGeometry* ellipse = NULL;
+        ID2D1Factory* factory = (ID2D1Factory*)r->d2d_factory;
+        D2D1_ELLIPSE bounds = {{w * 0.5f, h * 0.5f}, w * 0.5f, h * 0.5f};
+        if (!factory || FAILED(factory->lpVtbl->CreateEllipseGeometry(factory, &bounds, &ellipse))) return NULL;
+        made = (ID2D1PathGeometry*)ellipse; /* cache uses only the shared geometry/IUnknown methods */
+    } else made = sui__make_shape((ID2D1Factory*)r->d2d_factory, 0, 0, w, h, radius, ring, kind);
     if (!made) return NULL;
     if (victim->geometry) ((ID2D1PathGeometry*)victim->geometry)->lpVtbl->Release(victim->geometry);
     victim->geometry = made; victim->w = w; victim->h = h; victim->radius = radius; victim->ring = ring; victim->kind = kind;
@@ -1126,6 +1130,7 @@ static void sui_renderer_fill_ellipse(SuiRenderer* r, float cx, float cy, float 
     ID2D1RenderTarget* rt; ID2D1SolidColorBrush* br; D2D1_ELLIPSE el;
     br = sui__brush(r, color, 1.0f);
     if (!br) return;
+    if (sui__fill_shape(r, cx - radius, cy - radius, radius * 2, radius * 2, 0, 0, SUI__SHAPE_ELLIPSE, (ID2D1Brush*)br)) return;
     rt = (ID2D1RenderTarget*)r->render_target;
     el.point.x = cx; el.point.y = cy; el.radiusX = radius; el.radiusY = radius;
     rt->lpVtbl->FillEllipse(rt, &el, (ID2D1Brush*)br);

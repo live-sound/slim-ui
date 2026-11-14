@@ -428,11 +428,8 @@ static void sui_combo_draw_text_middle_single_line(SuiRenderer* r, const wchar_t
     if (!br) return;
     fmt = sui__resolve_text_fmt_ex(r, bold, size, family, &cfs);
     if (!fmt) return;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_MIDDLE | SUI_TEXT_NO_WRAP, &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, 0);
-    layout->lpVtbl->SetParagraphAlignment(layout, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-    layout->lpVtbl->SetWordWrapping(layout, DWRITE_WORD_WRAPPING_NO_WRAP);
     origin.x = x; origin.y = y - cfs * 0.04f;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
     layout->lpVtbl->Release(layout);

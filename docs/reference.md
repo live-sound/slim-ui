@@ -317,6 +317,17 @@ Rounded rects (fills, borders, `sui_renderer_draw_filled_ring`'s inner edge and
 cache in the renderer and drawn translated, so a shape seen again builds nothing.
 A `SUI_NO_CRT` build draws Direct2D's circular rounded rect.
 
+Filled circles also reuse factory-owned ellipse geometry in that bounded shape
+cache. Text drawing and measurement share an internal layout helper. A host that
+explicitly prepares text retains exact-text, format, size and alignment variants
+with its renderer; repeated painting reuses immutable layouts and formats. Font
+rebuild and renderer release discard those resources. Reconfiguration prunes old
+captions. A sealed preparation miss or capacity limit reports failure rather than
+allocating a fallback during painting. Native D2D/driver submission costs are
+separate from these retained resources.
+Borrowed dynamic content can opt out of preparation without adding captions to the
+fixed host's store; the store releases its contents on that transition.
+
 `sui_renderer_load_image` decodes via WIC and returns a `SuiImageHandle`
 suitable for `sui_ctrl_add_image`. Free with `sui_renderer_free_image`.
 

@@ -703,9 +703,10 @@ typedef struct SuiRenderer {
      * for every fill/draw call so the hot path doesn't allocate per frame. */
     void *scratch_brush;
 #ifdef SUI_FEATURE_CUSTOM_CONTROLS
-    /* Single-slot IDWriteTextFormat cache and 8-slot ring-geometry LRU.
-     * Eliminate per-frame DWrite allocations on text and ring draw paths. */
+    /* Legacy single-format cache; explicitly prepared hosts retain bounded,
+     * immutable formats/layouts in renderer-owned preparation storage. */
     SuiTextFormatCache format_cache;
+    struct SuiPreparedText* prepared_text; /* optional, renderer-owned preparation storage */
 #endif
     SuiShapeCache      shape_cache;   /* continuous rounded shapes, built on first use */
 } SuiRenderer;

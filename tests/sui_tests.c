@@ -2910,6 +2910,118 @@ UTEST(phase3_perf, format_cache_released_on_renderer_release) {
                "verify refcount — cannot run headless.");
 }
 
+struct prepared_text_fx { SuiRenderer renderer; };
+UTEST_F_SETUP(prepared_text_fx) {
+    SuiRenderer* r = &utest_fixture->renderer;
+    sui_renderer_init_fields(r);
+    ASSERT_TRUE(SUCCEEDED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED,
+        SUI_IID_REF(IID_IDWriteFactory), (IUnknown**)&r->dwrite_factory)));
+    sui_renderer_set_font(r, L"Segoe UI", 13);
+    ASSERT_TRUE(sui__prepared_text_begin(r, 1));
+}
+UTEST_F_TEARDOWN(prepared_text_fx) {
+    sui_renderer_release(&utest_fixture->renderer);
+    EXPECT_EQ((void*)NULL, utest_fixture->renderer.prepared_text);
+}
+static IDWriteTextLayout* test_prepared_layout(SuiRenderer* r, const wchar_t* text, unsigned style) {
+    IDWriteTextLayout* layout = NULL;
+    if (FAILED(sui__renderer_text_layout(r, text, (UINT32)wcslen(text),
+            (IDWriteTextFormat*)r->font_normal, 200, 80, style, &layout))) return NULL;
+    return layout;
+}
+UTEST_F(prepared_text_fx, immutable_styles_and_exact_text_survive_hash_collisions) {
+    SuiRenderer* r = &utest_fixture->renderer;
+    IDWriteTextLayout *left = test_prepared_layout(r, L"Open", 0), *center, *other, *again;
+    DWRITE_TEXT_METRICS a, b;
+    ASSERT_NE((void*)NULL, left);
+    center = test_prepared_layout(r, L"Open", SUI_TEXT_CENTER | SUI_TEXT_MIDDLE);
+    ASSERT_NE((void*)NULL, center);
+    ASSERT_NE(left, center);
+    left->lpVtbl->GetMetrics(left, &a); center->lpVtbl->GetMetrics(center, &b);
+    EXPECT_GT(b.left, a.left); EXPECT_GT(b.top, a.top);
+    r->prepared_text->layouts[0].hash = sui__text_hash(L"Save");
+    other = test_prepared_layout(r, L"Save", 0);
+    ASSERT_NE((void*)NULL, other); EXPECT_NE(left, other);
+    ASSERT_TRUE(sui__prepared_text_end(r));
+    again = test_prepared_layout(r, L"Open", SUI_TEXT_CENTER | SUI_TEXT_MIDDLE);
+    EXPECT_EQ(center, again); EXPECT_EQ(3u, r->prepared_text->layouts_created);
+    again->lpVtbl->Release(again); other->lpVtbl->Release(other);
+    center->lpVtbl->Release(center); left->lpVtbl->Release(left);
+}
+UTEST_F(prepared_text_fx, sealed_misses_and_capacity_never_allocate_fallbacks) {
+    SuiRenderer* r = &utest_fixture->renderer;
+    IDWriteTextLayout* layout;
+    unsigned i; size_t before;
+    wchar_t text[32];
+    wchar_t too_long[SUI_PREPARED_TEXT_LENGTH + 2];
+    for (i = 0; i < SUI_PREPARED_FORMATS; ++i)
+        ASSERT_NE((void*)NULL, sui__resolve_fmt(r, L"Segoe UI", 12.0f + i, 400, 0, 0));
+    before = test_sui_allocations;
+    EXPECT_EQ((void*)NULL, sui__resolve_fmt(r, L"Segoe UI", 100.0f, 400, 0, 0));
+    EXPECT_EQ(before, test_sui_allocations);
+    ASSERT_TRUE(sui__prepared_text_begin(r, 1));
+    for (i = 0; i < SUI_PREPARED_TEXT_LENGTH + 1; ++i) too_long[i] = L'x';
+    too_long[i] = 0;
+    EXPECT_EQ((void*)NULL, test_prepared_layout(r, too_long, 0));
+    EXPECT_EQ(before, test_sui_allocations);
+    ASSERT_TRUE(sui__prepared_text_begin(r, 1));
+    for (i = 0; i < SUI_PREPARED_LAYOUTS; ++i) {
+        swprintf(text, 32, L"Caption %u", i);
+        layout = test_prepared_layout(r, text, 0); ASSERT_NE((void*)NULL, layout);
+        layout->lpVtbl->Release(layout);
+    }
+    before = test_sui_allocations;
+    EXPECT_EQ((void*)NULL, test_prepared_layout(r, L"Capacity exceeded", 0));
+    EXPECT_EQ(before, test_sui_allocations);
+    EXPECT_FALSE(sui__prepared_text_end(r));
+    EXPECT_EQ((void*)NULL, test_prepared_layout(r, L"Unprepared change", 0));
+    EXPECT_EQ(before, test_sui_allocations);
+    EXPECT_EQ((unsigned)SUI_PREPARED_LAYOUTS, r->prepared_text->layouts_created);
+}
+UTEST_F(prepared_text_fx, edits_prune_obsolete_captions_and_font_rebuild_releases_resources) {
+    SuiRenderer* r = &utest_fixture->renderer;
+    IDWriteTextLayout* layout;
+    unsigned i; wchar_t text[32];
+    for (i = 0; i < 300; ++i) {
+        ASSERT_TRUE(sui__prepared_text_begin(r, 0));
+        swprintf(text, 32, L"Edited caption %u", i);
+        layout = test_prepared_layout(r, text, 0); ASSERT_NE((void*)NULL, layout);
+        layout->lpVtbl->Release(layout);
+        ASSERT_NE((void*)NULL, sui__resolve_fmt(r, L"Segoe UI", 14, 400, 0, 0));
+        ASSERT_NE((void*)NULL, sui__resolve_fmt(r, L"Segoe UI", 14, 600, 0, 0));
+        ASSERT_TRUE(sui__prepared_text_end(r));
+        EXPECT_EQ(1u, r->prepared_text->layout_count);
+        EXPECT_EQ(2u, r->prepared_text->format_count);
+    }
+    sui_renderer_set_font(r, L"Segoe UI", 16);
+    EXPECT_EQ(0u, r->prepared_text->layout_count);
+    EXPECT_EQ(0u, r->prepared_text->format_count);
+    EXPECT_TRUE(r->prepared_text->preparing);
+    layout = test_prepared_layout(r, L"New font", 0); ASSERT_NE((void*)NULL, layout);
+    sui_renderer_release(r);
+    { DWRITE_TEXT_METRICS metrics; EXPECT_TRUE(SUCCEEDED(layout->lpVtbl->GetMetrics(layout, &metrics))); }
+    layout->lpVtbl->Release(layout); /* outstanding caller reference outlives the cache */
+}
+UTEST_F(prepared_text_fx, dynamic_borrowers_can_opt_out_without_polluting_prepared_resources) {
+    SuiRenderer* r = &utest_fixture->renderer;
+    IDWriteTextLayout* layout = test_prepared_layout(r, L"Fixed caption", 0);
+    unsigned created;
+    ASSERT_NE((void*)NULL, layout); layout->lpVtbl->Release(layout);
+    ASSERT_TRUE(sui__prepared_text_end(r)); created = r->prepared_text->layouts_created;
+    sui__prepared_text_disable(r);
+    EXPECT_EQ(0u, r->prepared_text->layout_count);
+    EXPECT_EQ(0u, r->prepared_text->format_count);
+    layout = test_prepared_layout(r, L"Dynamic row", 0);
+    ASSERT_NE((void*)NULL, layout); layout->lpVtbl->Release(layout);
+    EXPECT_EQ(created, r->prepared_text->layouts_created);
+    EXPECT_TRUE(sui__prepared_text_end(r));
+    ASSERT_TRUE(sui__prepared_text_begin(r, 1));
+    layout = test_prepared_layout(r, L"Fixed caption", 0);
+    ASSERT_NE((void*)NULL, layout); layout->lpVtbl->Release(layout);
+    EXPECT_EQ(created + 1, r->prepared_text->layouts_created);
+    EXPECT_TRUE(sui__prepared_text_end(r));
+}
+
 /* =========================================================================
  * Phase-5 (memory model) — sizeof probes + heap-release guards.
  * ========================================================================= */

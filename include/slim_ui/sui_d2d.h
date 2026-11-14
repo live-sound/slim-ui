@@ -169,6 +169,7 @@ typedef struct D2D1_MATRIX_3X2_F {
 /* Minimal geometry interface types (for focus ring drawing) */
 typedef struct ID2D1Geometry              ID2D1Geometry;
 typedef struct ID2D1RectangleGeometry     ID2D1RectangleGeometry;
+typedef struct ID2D1EllipseGeometry       ID2D1EllipseGeometry;
 typedef struct ID2D1RoundedRectangleGeometry ID2D1RoundedRectangleGeometry;
 typedef struct ID2D1GeometryGroup         ID2D1GeometryGroup;
 typedef struct { void *QueryInterface, *AddRef; ULONG (STDMETHODCALLTYPE *Release)(void*); } sui__MinGeomVtbl;
@@ -358,7 +359,7 @@ typedef struct {
     void *ReloadSystemMetrics, *GetDesktopDpi;
     HRESULT (STDMETHODCALLTYPE *CreateRectangleGeometry)(ID2D1Factory*, const D2D1_RECT_F*, ID2D1RectangleGeometry**);
     HRESULT (STDMETHODCALLTYPE *CreateRoundedRectangleGeometry)(ID2D1Factory*, const D2D1_ROUNDED_RECT*, ID2D1RoundedRectangleGeometry**);
-    void *CreateEllipseGeometry;
+    HRESULT (STDMETHODCALLTYPE *CreateEllipseGeometry)(ID2D1Factory*, const D2D1_ELLIPSE*, ID2D1EllipseGeometry**);
     HRESULT (STDMETHODCALLTYPE *CreateGeometryGroup)(ID2D1Factory*, int, ID2D1Geometry**, UINT32, ID2D1GeometryGroup**);
     void *CreateTransformedGeometry;
     HRESULT (STDMETHODCALLTYPE *CreatePathGeometry)(ID2D1Factory*, ID2D1PathGeometry**);

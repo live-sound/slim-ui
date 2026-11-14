@@ -883,11 +883,8 @@ static void sui_ctrl_tabs_draw_text_top_singleline_weight_ex(SuiRenderer* r, con
     use_family = (family && family[0]) ? family : r->typography.body.family;
     fmt = sui__resolve_fmt(r, use_family, cfs, weight, sui__body_style(r), 0);
     if (!fmt) return;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_NO_WRAP, &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, 0);
-    layout->lpVtbl->SetParagraphAlignment(layout, 0);
-    layout->lpVtbl->SetWordWrapping(layout, DWRITE_WORD_WRAPPING_NO_WRAP);
     origin.x = x;
     origin.y = y;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
@@ -918,10 +915,8 @@ static void sui_ctrl_tabs_draw_text_middle_weight_alpha_ex(SuiRenderer* r, const
     use_family = (family && family[0]) ? family : r->typography.body.family;
     fmt = sui__resolve_fmt(r, use_family, cfs, weight, sui__body_style(r), 0);
     if (!fmt) return;
-    if (FAILED(sui__text_layout(dw, str, (UINT32)wcslen(str), fmt, w, h, &layout)) || !layout)
+    if (FAILED(sui__renderer_text_layout(r, str, (UINT32)wcslen(str), fmt, w, h, SUI_TEXT_MIDDLE, &layout)) || !layout)
         return;
-    layout->lpVtbl->SetTextAlignment(layout, 0);
-    layout->lpVtbl->SetParagraphAlignment(layout, DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
     origin.x = x;
     origin.y = y - cfs * 0.04f;
     rt->lpVtbl->DrawTextLayout(rt, origin, layout, (ID2D1Brush*)br, 0);
