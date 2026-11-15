@@ -468,11 +468,14 @@ static void sui_ctrl_shortcut_draw_single_line_fit(SuiRenderer* r, const wchar_t
         bold, draw_size, family);
 }
 
-static void sui_ctrl_draw_shortcut_recorder(SuiControlHost* host, SuiControl* ctrl) {
+/* Keep the field frame intact when a consumer overlays a trailing action. */
+static void sui__ctrl_draw_shortcut_recorder_inset(SuiControlHost* host, SuiControl* ctrl,
+                                                   float trailing_inset) {
     SuiRenderer* r = host->renderer;
     const SuiColorScheme* sc = host->scheme;
     float s = sui_ctrl_dpi_scale(host), rad = 4.0f * s;
     float pad = 10.0f * s;
+    float text_w = ctrl->w - pad * 2.0f - trailing_inset;
     int active = ctrl->d.shortcut.recording || (ctrl->state & SUI_CTRL_FOCUSED);
     uint32_t bg_color = sui_ctrl_style_color(ctrl, SUI_STYLE_BG_COLOR, sc->input_bg);
     uint32_t hover_color = sui_ctrl_style_color(ctrl, SUI_STYLE_HOVER_COLOR, sc->btn_hover);
@@ -497,18 +500,22 @@ static void sui_ctrl_draw_shortcut_recorder(SuiControlHost* host, SuiControl* ct
                    ctrl->hover_t),
         active ? 2.0f : 1.0f);
 
-    if (ctrl->d.shortcut.recording && ctrl->d.shortcut.candidate_vk == 0 &&
+    if (text_w > 0.0f && ctrl->d.shortcut.recording && ctrl->d.shortcut.candidate_vk == 0 &&
         ctrl->d.shortcut.candidate_mouse_button == SUI_SHORTCUT_MOUSE_NONE &&
         ctrl->d.shortcut.candidate_gamepad_buttons == 0) {
         sui_ctrl_shortcut_draw_single_line_fit(r, ctrl->d.shortcut.prompt, ctrl->x + pad,
-            ctrl->y, ctrl->w - pad * 2.0f, ctrl->h,
+            ctrl->y, text_w, ctrl->h,
             placeholder_color, font_size, bold, font_family);
-    } else {
+    } else if (text_w > 0.0f) {
         sui_ctrl_shortcut_draw_single_line_fit(r, ctrl->text, ctrl->x + pad,
-            ctrl->y, ctrl->w - pad * 2.0f, ctrl->h,
+            ctrl->y, text_w, ctrl->h,
             ctrl->text[0] ? text_color : placeholder_color, font_size, bold, font_family);
     }
     sui_ctrl_draw_kb_focus_ring(host, ctrl, rad);
+}
+
+static void sui_ctrl_draw_shortcut_recorder(SuiControlHost* host, SuiControl* ctrl) {
+    sui__ctrl_draw_shortcut_recorder_inset(host, ctrl, 0.0f);
 }
 
 static void sui_ctrl_shortcut_activate(SuiControlHost* host, SuiControl* c) {
