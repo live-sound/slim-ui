@@ -222,11 +222,35 @@ static void sui__tooltip_measure_text(SuiControlHost* host, SuiControl* ctrl, fl
     SuiTooltipMeasure* m = &ctrl->tooltip_measure;
     IDWriteTextFormat* fmt = sui__resolve_text_fmt_ex(r, bold, font_size, font_family, NULL);
     UINT32 key = fmt ? (sui__tooltip_font_key(fmt) ^ sui__text_hash(ctrl->tooltip)) | 1u : 0;
-    int slack = (int)(pad_x + 0.5f) * 2, found;
+    IDWriteTextFormat* anchor_fmt = NULL;
+    int text_anchor = ctrl->text[0] && (ctrl->type == SUI_CTRL_CHECKBOX || ctrl->type == SUI_CTRL_RADIO ||
+                                       ctrl->type == SUI_CTRL_LABEL);
+    int slack = (int)(pad_x + 0.5f) * 2, found, anchor_ok = !text_anchor;
     float tip_w;
 
+    if (text_anchor && host->renderer) {
+        SuiRenderer* parent = host->renderer;
+        float size = ctrl->type == SUI_CTRL_LABEL
+            ? (ctrl->font_size ? (ctrl->font_size < 0.0f ? -ctrl->font_size : ctrl->font_size) : parent->font_size)
+            : sui_ctrl_style_font_size(ctrl, parent->font_size);
+        anchor_fmt = sui__resolve_text_fmt_ex(parent, bold, size, sui_ctrl_style_font_family(ctrl), NULL);
+        key = key && anchor_fmt
+            ? ((key ^ sui__text_hash(ctrl->text)) * 16777619u ^ sui__tooltip_font_key(anchor_fmt)) | 1u : 0;
+    }
     if (key && m->key == key && m->max_w == max_w) return;
 
+    m->anchor_text_w = 0.0f;
+    if (anchor_fmt) {
+        IDWriteTextLayout* layout;
+        DWRITE_TEXT_METRICS metrics;
+        /* Placement must not add a measurement layout to the parent's sealed preparation. */
+        if (SUCCEEDED(sui__renderer_text_layout(r, ctrl->text, (UINT32)wcslen(ctrl->text), anchor_fmt,
+                                               10000.0f, 10000.0f, 0, &layout))) {
+            anchor_ok = SUCCEEDED(layout->lpVtbl->GetMetrics(layout, &metrics));
+            if (anchor_ok) m->anchor_text_w = metrics.width;
+            layout->lpVtbl->Release(layout);
+        }
+    }
     tip_w = sui_renderer_measure_text_width_ex(r, ctrl->tooltip, bold, font_size, font_family) + pad_x * 2.0f;
     if (tip_w < min_w) tip_w = min_w;
     if (tip_w > max_w) tip_w = max_w;
@@ -241,7 +265,7 @@ static void sui__tooltip_measure_text(SuiControlHost* host, SuiControl* ctrl, fl
     found = sui__tooltip_measure_ink(r, ctrl->tooltip, m->wrap_w, m->text_h, slack, bold, font_size, font_family, &m->ink);
     if (!found) SetRect(&m->ink, 0, 0, (int)m->wrap_w, (int)m->text_h);
     if (sui__tooltip_anchor_to_baseline(r, &host->tooltip_capital, ctrl->tooltip, m->wrap_w, slack, bold, font_size,
-                                        font_family, &m->ink) && found)
+                                        font_family, &m->ink) && found && anchor_ok)
         m->key = key;
 }
 
@@ -496,7 +520,7 @@ static void sui__tooltip_calc_rect(SuiControlHost* host, SuiControl* ctrl,
     MONITORINFO mi;
     POINT anchor;
     POINT left_anchor;
-    float s, pad_x, gap, margin, font_size, anchor_w, anchor_font_size, anchor_text_w;
+    float s, pad_x, gap, margin, font_size, anchor_w;
     float work_w, max_w, min_w;
     int pad, panel_x, panel_y, panel_w, panel_h, shadow_margin;
     int x, y, w, h;
@@ -535,18 +559,9 @@ static void sui__tooltip_calc_rect(SuiControlHost* host, SuiControl* ctrl,
 
     anchor_w = ctrl->w;
     if ((ctrl->type == SUI_CTRL_CHECKBOX || ctrl->type == SUI_CTRL_RADIO) && ctrl->text[0]) {
-        anchor_text_w = sui_renderer_measure_text_width_ex(host->renderer, ctrl->text,
-            (ctrl->state & SUI_CTRL_BOLD) ? 1 : 0,
-            sui_ctrl_style_font_size(ctrl, host->renderer->font_size),
-            sui_ctrl_style_font_family(ctrl));
-        anchor_w = SUI_CHECKBOX_BOX_W * s + SUI_CHECKBOX_GAP * s + anchor_text_w;
+        anchor_w = SUI_CHECKBOX_BOX_W * s + SUI_CHECKBOX_GAP * s + measured->anchor_text_w;
     } else if (ctrl->type == SUI_CTRL_LABEL && ctrl->text[0]) {
-        anchor_font_size = ctrl->font_size != 0.0f
-            ? (ctrl->font_size < 0.0f ? -ctrl->font_size : ctrl->font_size)
-            : host->renderer->font_size;
-        anchor_w = sui_renderer_measure_text_width_ex(host->renderer, ctrl->text,
-            (ctrl->state & SUI_CTRL_BOLD) ? 1 : 0,
-            anchor_font_size, sui_ctrl_style_font_family(ctrl));
+        anchor_w = measured->anchor_text_w;
     }
     if (anchor_w < 0.0f) anchor_w = 0.0f;
     if (anchor_w > ctrl->w) anchor_w = ctrl->w;

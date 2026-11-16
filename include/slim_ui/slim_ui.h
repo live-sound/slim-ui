@@ -350,6 +350,7 @@ typedef struct SuiTooltipMeasure {
     float  max_w;    /* the widest panel it was measured for, which also moves with the DPI scale */
     float  wrap_w;   /* the width its text wraps to */
     float  text_h;
+    float  anchor_text_w; /* caption width in the parent font, measured by the popup */
     RECT   ink;      /* where its letters sit, from the text's top left */
 } SuiTooltipMeasure;
 

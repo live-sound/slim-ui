@@ -431,6 +431,9 @@ opacity (about 6%) with an 8-DIP margin and 2-DIP downward offset for a light,
 tight shadow.
 Its text is drawn like the main window's; only the antialiased rounded
 perimeter and shadow remain translucent.
+Caption widths for tooltip placement are cached with the tooltip measurement.
+They use the parent's exact font and DPI through the popup's layout resources,
+so showing a tooltip does not add layouts to a parent's sealed text preparation.
 `sui_ctrl_set_tooltip` copies text into the control, so callers do not
 need to keep the source string alive. `sui_ctrl_add_tooltip` creates a
 compact `?` info marker control (`SUI_CTRL_TOOLTIP`) whose only purpose

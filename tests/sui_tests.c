@@ -874,10 +874,69 @@ UTEST_F(host_fx, tooltip_draws_a_fonts_capital_once) {
 
 static int test_tooltip_measured_again(SuiControlHost* host, SuiControl* ctrl) {
     int x, y, w, h;
+    int left = ctrl->tooltip_measure.ink.left;
     SuiRect text;
     ctrl->tooltip_measure.ink.left = TEST_NO_FONT_DRAWS_THIS;
     sui__tooltip_calc_rect(host, ctrl, &x, &y, &w, &h, &text);
-    return ctrl->tooltip_measure.ink.left != TEST_NO_FONT_DRAWS_THIS;
+    if (ctrl->tooltip_measure.ink.left != TEST_NO_FONT_DRAWS_THIS) return 1;
+    ctrl->tooltip_measure.ink.left = left;
+    return 0;
+}
+
+UTEST_F(host_fx, tooltip_anchor_preserves_the_prepared_parent) {
+    SuiControlHost* host = &utest_fixture->host;
+    SuiRenderer renderer;
+    unsigned formats, layouts;
+    float widths[3];
+    int i, repeat;
+    sui_renderer_init_fields(&renderer);
+    ASSERT_TRUE(sui_renderer_init(&renderer, host->hwnd));
+    host->renderer = &renderer;
+    sui_ctrl_add_checkbox(host, 70, 0, 0, 300, 24, L"Keep focus", 0);
+    sui_ctrl_add_label(host, 71, 0, 30, 300, 24, L"Policy");
+    sui_ctrl_add_radio(host, 72, 0, 60, 300, 24, L"Automatic", 1, 1);
+    sui_ctrl_set_font_size(host, 71, 14.0f);
+    host->controls[1].state |= SUI_CTRL_BOLD;
+    for (i = 0; i < 3; ++i) sui_ctrl_set_tooltip(host, 70 + i, L"An explanation of this option.");
+    for (i = 0; i < 3; ++i) {
+        SuiControl* ctrl = &host->controls[i];
+        widths[i] = sui_renderer_measure_text_width_ex(&renderer, ctrl->text, (ctrl->state & SUI_CTRL_BOLD) != 0,
+            sui_ctrl_style_font_size(ctrl, renderer.font_size), sui_ctrl_style_font_family(ctrl));
+    }
+    EXPECT_TRUE(sui__prepared_text_begin(&renderer, 1));
+    sui_renderer_begin(&renderer);
+    sui_ctrl_draw_all(host);
+    sui_renderer_end(&renderer);
+    EXPECT_TRUE(sui__prepared_text_end(&renderer));
+    formats = renderer.prepared_text->formats_created;
+    layouts = renderer.prepared_text->layouts_created;
+    for (i = 0; i < 3; ++i) for (repeat = 0; repeat < 2; ++repeat) {
+        sui_ctrl_show_tooltip_popup(host, i);
+        EXPECT_NE(0u, host->controls[i].tooltip_measure.key);
+        EXPECT_NEAR(widths[i], host->controls[i].tooltip_measure.anchor_text_w, 0.01f);
+        EXPECT_FALSE(test_tooltip_measured_again(host, &host->controls[i]));
+        EXPECT_EQ(0u, renderer.prepared_text->rejected);
+        EXPECT_EQ(formats, renderer.prepared_text->formats_created);
+        EXPECT_EQ(layouts, renderer.prepared_text->layouts_created);
+        sui_ctrl_hide_tooltip_popup(host);
+    }
+    EXPECT_TRUE(sui__prepared_text_end(&renderer));
+    {
+        UINT32 key = host->controls[0].tooltip_measure.key;
+        sui__wstrncpy_z(host->controls[0].text, L"Keep keyboard focus on this window", SUI_CTRL_TEXT_MAX);
+        EXPECT_TRUE(sui__prepared_text_begin(&renderer, 1));
+        sui_renderer_begin(&renderer);
+        sui_ctrl_draw_all(host);
+        sui_renderer_end(&renderer);
+        EXPECT_TRUE(sui__prepared_text_end(&renderer));
+        sui_ctrl_show_tooltip_popup(host, 0);
+        EXPECT_NE(key, host->controls[0].tooltip_measure.key);
+        EXPECT_GT(host->controls[0].tooltip_measure.anchor_text_w, widths[0]);
+        EXPECT_EQ(0u, renderer.prepared_text->rejected);
+    }
+    sui_ctrl_destroy_tooltip_popup(host);
+    host->renderer = &utest_fixture->renderer;
+    sui_renderer_release(&renderer);
 }
 
 /* Showing a tooltip again costs no drawing, and everything that could move its letters measures it afresh. */
